@@ -1,0 +1,14 @@
+services:
+  snippets-db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: snippets
+      POSTGRES_USER: snippets
+      POSTGRES_PASSWORD: snippets
+    ports:
+      - "5433:5432"
+    volumes:
+      - snippets-db-data:/var/lib/postgresql/data
+
+volumes:
+  snippets-db-data:
