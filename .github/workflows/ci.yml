@@ -6,4 +6,4 @@ on:
 
 jobs:
   check:
-    uses: ing-sis-PrintScript/workflow/.github/workflows/gradle-check.yml@main
+    uses: ing-sis-PrintScript/workflow/.github/workflows/gradle-check.yml@v1
