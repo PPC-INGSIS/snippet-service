@@ -65,6 +65,16 @@ detekt {
     buildUponDefaultConfig = true
 }
 
+// --- Git hooks ---
+
+// .git/hooks no se versiona: los hooks viven en .githooks/ y se copian al correr check
+tasks.register<Copy>("installGitHooks") {
+    from(layout.projectDirectory.dir(".githooks"))
+    into(layout.projectDirectory.dir(".git/hooks"))
+    // Sin permiso de ejecución, Git ignora el hook sin avisar
+    filePermissions { unix("0755") }
+}
+
 // --- Cobertura ---
 
 // main() nunca corre en los tests: el test arma el contexto de Spring sin pasar por ahí.
@@ -96,4 +106,5 @@ tasks.jacocoTestCoverageVerification {
 
 tasks.check {
     dependsOn(tasks.jacocoTestCoverageVerification)
+    dependsOn("installGitHooks")
 }
