@@ -12,6 +12,6 @@ class TestcontainersConfiguration {
     @ServiceConnection
     fun postgresContainer(): PostgreSQLContainer {
         // La misma versión que el docker-compose, para testear contra lo mismo que corre
-        return PostgreSQLContainer(DockerImageName.parse("postgres:17"))
+        return PostgreSQLContainer(DockerImageName.parse("postgres:18"))
     }
 }

@@ -1,7 +1,7 @@
 services:
   snippets-db:
     container_name: snippet-postgres-db
-    image: postgres:17.6
+    image: postgres:18
     ports:
       - "127.0.0.1:${DB_PORT:-5433}:5432"
     environment:
@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-snippets}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-snippets}
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
 
 volumes:
   postgres-data:
