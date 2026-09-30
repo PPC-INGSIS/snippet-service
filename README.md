@@ -15,7 +15,7 @@ No ejecuta ni valida código. Para eso le pide al servicio del lenguaje que corr
 |---|---|
 | Lenguaje | Kotlin 2.3 sobre Java 21 |
 | Framework | Spring Boot 4.1 (Web MVC, Data JPA, Actuator) |
-| Base de datos | PostgreSQL 17.6 |
+| Base de datos | PostgreSQL 18 |
 | Build | Gradle (Kotlin DSL) |
 | Calidad | ktlint, detekt, JaCoCo |
 | Tests | JUnit 5 y Testcontainers |
