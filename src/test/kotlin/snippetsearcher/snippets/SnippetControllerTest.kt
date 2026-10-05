@@ -1,5 +1,6 @@
 package snippetsearcher.snippets
 
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
@@ -9,26 +10,49 @@ import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 
-@Import(TestcontainersConfiguration::class)
+@Import(TestcontainersConfiguration::class, FakePrintScriptConfiguration::class)
 @SpringBootTest
 @AutoConfigureMockMvc
 class SnippetControllerTest(
     @Autowired private val mockMvc: MockMvc,
+    @Autowired private val printScript: FakePrintScriptClient,
 ) {
+    private val body =
+        """
+        {"name":"Saludo","description":"Pide un nombre","language":"printscript","version":"1.1","content":"println(1);"}
+        """.trimIndent()
+
+    @BeforeEach
+    fun codigoValidoPorDefecto() {
+        printScript.errors = emptyList()
+    }
+
     @Test
-    fun `POST snippets crea el snippet y responde 201 con su id`() {
+    fun `POST snippets con codigo valido responde 201 con su id`() {
         mockMvc
             .post("/snippets") {
                 contentType = MediaType.APPLICATION_JSON
-                content =
-                    """
-                    {"name":"Saludo","description":"Pide un nombre","language":"printscript","version":"1.1"}
-                    """.trimIndent()
+                content = body
             }.andExpect {
                 status { isCreated() }
                 jsonPath("$.id") { exists() }
                 jsonPath("$.name") { value("Saludo") }
-                jsonPath("$.language") { value("printscript") }
+            }
+    }
+
+    @Test
+    fun `POST snippets con codigo invalido responde 400 con los errores`() {
+        printScript.errors = listOf(ValidationError("Falta el punto y coma", 1, 11))
+
+        mockMvc
+            .post("/snippets") {
+                contentType = MediaType.APPLICATION_JSON
+                content = body
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.errors[0].message") { value("Falta el punto y coma") }
+                jsonPath("$.errors[0].line") { value(1) }
+                jsonPath("$.errors[0].column") { value(11) }
             }
     }
 }
