@@ -31,6 +31,8 @@ class SnippetController(
                 ResponseEntity.status(HttpStatus.CREATED).body(result.snippet.toResponse())
             is CreateSnippetResult.Invalid ->
                 ResponseEntity.badRequest().body(InvalidSnippetResponse(result.errors))
+            is CreateSnippetResult.Rejected ->
+                ResponseEntity.badRequest().body(RejectedSnippetResponse(result.message))
         }
     }
 }
@@ -56,3 +58,7 @@ data class InvalidSnippetResponse(
 )
 
 private fun Snippet.toResponse() = SnippetResponse(id, name, description, language, version)
+
+data class RejectedSnippetResponse(
+    val message: String,
+)

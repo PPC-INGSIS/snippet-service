@@ -24,7 +24,7 @@ class SnippetControllerTest(
 
     @BeforeEach
     fun codigoValidoPorDefecto() {
-        printScript.errors = emptyList()
+        printScript.result = ValidationResult.Checked(emptyList())
     }
 
     @Test
@@ -42,7 +42,7 @@ class SnippetControllerTest(
 
     @Test
     fun `POST snippets con codigo invalido responde 400 con los errores`() {
-        printScript.errors = listOf(ValidationError("Falta el punto y coma", 1, 11))
+        printScript.result = ValidationResult.Checked(listOf(ValidationError("Falta el punto y coma", 1, 11)))
 
         mockMvc
             .post("/snippets") {
@@ -53,6 +53,20 @@ class SnippetControllerTest(
                 jsonPath("$.errors[0].message") { value("Falta el punto y coma") }
                 jsonPath("$.errors[0].line") { value(1) }
                 jsonPath("$.errors[0].column") { value(11) }
+            }
+    }
+
+    @Test
+    fun `POST snippets con una version que no existe responde 400 con el mensaje`() {
+        printScript.result = ValidationResult.Rejected("La versión '1.3' no existe")
+
+        mockMvc
+            .post("/snippets") {
+                contentType = MediaType.APPLICATION_JSON
+                content = body
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.message") { value("La versión '1.3' no existe") }
             }
     }
 }

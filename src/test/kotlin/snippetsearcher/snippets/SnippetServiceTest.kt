@@ -18,7 +18,7 @@ class SnippetServiceTest(
 ) {
     @BeforeEach
     fun codigoValidoPorDefecto() {
-        printScript.errors = emptyList()
+        printScript.result = ValidationResult.Checked(emptyList())
     }
 
     @Test
@@ -45,13 +45,25 @@ class SnippetServiceTest(
 
     @Test
     fun `no guarda un snippet con codigo invalido`() {
-        printScript.errors = listOf(ValidationError("Falta el punto y coma", 1, 11))
+        printScript.result = ValidationResult.Checked(listOf(ValidationError("Falta el punto y coma", 1, 11)))
         val before = repository.count()
 
         val result = service.create("Roto", "No compila", "printscript", "1.1", "println(1)")
 
         val invalid = assertIs<CreateSnippetResult.Invalid>(result)
         assertEquals("Falta el punto y coma", invalid.errors.single().message)
+        assertEquals(before, repository.count())
+    }
+
+    @Test
+    fun `no guarda un snippet si PrintScript rechaza el pedido`() {
+        printScript.result = ValidationResult.Rejected("La versión '1.3' no existe")
+        val before = repository.count()
+
+        val result = service.create("Saludo", "Pide un nombre", "printscript", "1.3", "println(1);")
+
+        val rejected = assertIs<CreateSnippetResult.Rejected>(result)
+        assertEquals("La versión '1.3' no existe", rejected.message)
         assertEquals(before, repository.count())
     }
 }

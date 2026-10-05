@@ -14,13 +14,15 @@ class SnippetService(
         language: String,
         version: String,
         content: String,
-    ): CreateSnippetResult {
-        val errors = printScriptClient.validate(version, content)
-        if (errors.isNotEmpty()) {
-            return CreateSnippetResult.Invalid(errors)
+    ): CreateSnippetResult =
+        when (val validation = printScriptClient.validate(version, content)) {
+            is ValidationResult.Rejected -> CreateSnippetResult.Rejected(validation.message)
+            is ValidationResult.Checked ->
+                if (validation.errors.isNotEmpty()) {
+                    CreateSnippetResult.Invalid(validation.errors)
+                } else {
+                    val snippet = Snippet(UUID.randomUUID(), name, description, language, version)
+                    CreateSnippetResult.Created(repository.save(snippet))
+                }
         }
-
-        val snippet = Snippet(UUID.randomUUID(), name, description, language, version)
-        return CreateSnippetResult.Created(repository.save(snippet))
-    }
 }
