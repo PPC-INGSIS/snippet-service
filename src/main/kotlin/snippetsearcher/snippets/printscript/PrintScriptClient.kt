@@ -1,4 +1,4 @@
-package snippetsearcher.snippets
+package snippetsearcher.snippets.printscript
 
 // Lo que Snippets necesita del servicio de PrintScript
 interface PrintScriptClient {

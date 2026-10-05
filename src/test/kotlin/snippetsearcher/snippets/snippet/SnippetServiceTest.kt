@@ -1,10 +1,15 @@
-package snippetsearcher.snippets
+package snippetsearcher.snippets.snippet
 
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
+import snippetsearcher.snippets.TestcontainersConfiguration
+import snippetsearcher.snippets.printscript.FakePrintScriptClient
+import snippetsearcher.snippets.printscript.FakePrintScriptConfiguration
+import snippetsearcher.snippets.printscript.ValidationError
+import snippetsearcher.snippets.printscript.ValidationResult
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals

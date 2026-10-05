@@ -1,4 +1,6 @@
-package snippetsearcher.snippets
+package snippetsearcher.snippets.snippet
+
+import snippetsearcher.snippets.printscript.ValidationError
 
 sealed interface CreateSnippetResult {
     data class Created(

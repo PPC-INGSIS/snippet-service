@@ -1,6 +1,8 @@
-package snippetsearcher.snippets
+package snippetsearcher.snippets.snippet
 
 import org.springframework.stereotype.Service
+import snippetsearcher.snippets.printscript.PrintScriptClient
+import snippetsearcher.snippets.printscript.ValidationResult
 import java.util.UUID
 
 @Service

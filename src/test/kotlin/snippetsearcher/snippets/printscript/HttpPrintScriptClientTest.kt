@@ -1,4 +1,4 @@
-package snippetsearcher.snippets
+package snippetsearcher.snippets.printscript
 
 import com.sun.net.httpserver.HttpServer
 import org.junit.jupiter.api.AfterEach
