@@ -1,9 +1,10 @@
-package snippetsearcher.snippets
+package snippetsearcher.snippets.snippet
 
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
+import snippetsearcher.snippets.TestcontainersConfiguration
 import java.util.UUID
 import kotlin.test.assertEquals
 

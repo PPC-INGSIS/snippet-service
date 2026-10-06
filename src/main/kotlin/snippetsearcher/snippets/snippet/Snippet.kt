@@ -1,4 +1,4 @@
-package snippetsearcher.snippets
+package snippetsearcher.snippets.snippet
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
