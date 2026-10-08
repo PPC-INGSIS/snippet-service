@@ -2,14 +2,11 @@ name: Publish
 
 on:
   push:
-    # TEMPORAL: solo para probar. Después pasa a [dev, main]
-    branches: [feature/publish-image]
+    branches: [dev, main]
 
 jobs:
   publish:
-    # El reusable solo puede usar los permisos que le da quien lo llama
     permissions:
       contents: read
       packages: write
-    # TEMPORAL: apunta a la rama para probar antes de mergear. Después pasa a @v3
-    uses: PPC-INGSIS/workflow/.github/workflows/docker-publish.yml@feature/docker-publish
+    uses: PPC-INGSIS/workflow/.github/workflows/docker-publish.yml@v3
