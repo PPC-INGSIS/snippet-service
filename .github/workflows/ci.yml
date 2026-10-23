@@ -10,4 +10,4 @@ jobs:
     permissions:
       contents: read
       packages: read
-    uses: PPC-INGSIS/workflow/.github/workflows/gradle-check.yml@v2
+    uses: PPC-INGSIS/workflow/.github/workflows/gradle-check.yml@v3
