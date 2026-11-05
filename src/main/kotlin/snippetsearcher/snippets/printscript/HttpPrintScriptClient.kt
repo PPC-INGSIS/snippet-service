@@ -31,8 +31,8 @@ class HttpPrintScriptClient(
             ValidationResult.Checked(response?.errors.orEmpty())
         } catch (exception: HttpClientErrorException.BadRequest) {
             // RestClient convierte el 400 en excepción; acá vuelve a ser un resultado
-            val message = exception.getResponseBodyAs(RejectedResponse::class.java)?.message
-            ValidationResult.Rejected(message ?: "PrintScript rechazó el pedido")
+            val detail = exception.getResponseBodyAs(RejectedResponse::class.java)?.detail
+            ValidationResult.Rejected(detail ?: "PrintScript rechazó el pedido")
         }
 }
 
@@ -41,7 +41,7 @@ data class ValidationResponse(
     val errors: List<ValidationError>,
 )
 
-// Respuesta 400 de printscript-service
+// Respuesta 400 de printscript-service, en formato Problem Details (RFC 9457)
 data class RejectedResponse(
-    val message: String? = null,
+    val detail: String? = null,
 )

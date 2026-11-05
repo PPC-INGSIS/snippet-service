@@ -14,6 +14,7 @@ class HttpPrintScriptClientTest {
     private val server = HttpServer.create(InetSocketAddress(0), 0)
     private var status = 200
     private var response = """{"errors":[]}"""
+    private var contentType = "application/json"
     private var receivedQuery = ""
     private var receivedBody = ""
 
@@ -23,7 +24,7 @@ class HttpPrintScriptClientTest {
             receivedQuery = exchange.requestURI.query
             receivedBody = exchange.requestBody.readAllBytes().decodeToString()
             val bytes = response.toByteArray()
-            exchange.responseHeaders.add("Content-Type", "application/json")
+            exchange.responseHeaders.add("Content-Type", contentType)
             exchange.sendResponseHeaders(status, bytes.size.toLong())
             exchange.responseBody.use { it.write(bytes) }
         }
@@ -60,11 +61,33 @@ class HttpPrintScriptClientTest {
     @Test
     fun `un 400 de PrintScript vuelve como pedido rechazado con su mensaje`() {
         status = 400
-        response = """{"message":"La versión '1.3' no existe"}"""
+        contentType = "application/problem+json"
+        response =
+            """
+            {
+              "title": "Bad Request",
+              "status": 400,
+              "detail": "La versión '1.3' no existe",
+              "instance": "/validate",
+              "message": "La versión '1.3' no existe"
+            }
+            """.trimIndent()
 
         val result = client().validate("1.3", "println(1);")
 
         val rejected = assertIs<ValidationResult.Rejected>(result)
         assertEquals("La versión '1.3' no existe", rejected.message)
+    }
+
+    @Test
+    fun `un 400 sin detail vuelve como pedido rechazado con el texto por defecto`() {
+        status = 400
+        contentType = "application/problem+json"
+        response = """{"title":"Bad Request","status":400}"""
+
+        val result = client().validate("1.1", "println(1);")
+
+        val rejected = assertIs<ValidationResult.Rejected>(result)
+        assertEquals("PrintScript rechazó el pedido", rejected.message)
     }
 }
