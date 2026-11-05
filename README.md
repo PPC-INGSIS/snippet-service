@@ -27,7 +27,7 @@ No ejecuta ni valida código. Para eso le pide al servicio del lenguaje que corr
 ## Correrlo localmente
 
 ```bash
-# 1. Levantar Postgres
+# 1. Levantar Postgres y Redis
 docker compose up -d
  
 # 2. Levantar el servicio
@@ -62,6 +62,8 @@ cp .env.example .env
 | `POSTGRES_DB` | `snippets` | Nombre de la base |
 | `POSTGRES_USER` | `snippets` | Usuario de la base |
 | `POSTGRES_PASSWORD` | `snippets` | Contraseña de la base |
+| `REDIS_HOST` | `localhost` | Host de Redis |
+| `REDIS_PORT` | `6379` | Puerto de Redis en tu máquina |
 
 El mismo `.env` lo leen **Docker Compose** (para crear la base) y **Spring** (para conectarse), así que los dos quedan siempre sincronizados.
 
