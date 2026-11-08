@@ -7,6 +7,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import snippetsearcher.snippets.TestcontainersConfiguration
@@ -36,6 +37,7 @@ class SnippetControllerTest(
     fun `POST snippets con codigo valido responde 201 con su id`() {
         mockMvc
             .post("/snippets") {
+                with(jwt())
                 contentType = MediaType.APPLICATION_JSON
                 content = body
             }.andExpect {
@@ -51,6 +53,7 @@ class SnippetControllerTest(
 
         mockMvc
             .post("/snippets") {
+                with(jwt())
                 contentType = MediaType.APPLICATION_JSON
                 content = body
             }.andExpect {
@@ -67,6 +70,7 @@ class SnippetControllerTest(
 
         mockMvc
             .post("/snippets") {
+                with(jwt())
                 contentType = MediaType.APPLICATION_JSON
                 content = body
             }.andExpect {
