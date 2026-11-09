@@ -90,4 +90,40 @@ class HttpPrintScriptClientTest {
         val rejected = assertIs<ValidationResult.Rejected>(result)
         assertEquals("PrintScript rechazó el pedido", rejected.message)
     }
+
+    @Test
+    fun `un 400 con detail en blanco vuelve como pedido rechazado con el texto por defecto`() {
+        status = 400
+        contentType = "application/problem+json"
+        response = """{"title":"Bad Request","status":400,"detail":"   "}"""
+
+        val result = client().validate("1.1", "println(1);")
+
+        val rejected = assertIs<ValidationResult.Rejected>(result)
+        assertEquals("PrintScript rechazó el pedido", rejected.message)
+    }
+
+    @Test
+    fun `un 400 en HTML vuelve como pedido rechazado con el texto por defecto`() {
+        status = 400
+        contentType = "text/html"
+        response = "<html>Bad Request</html>"
+
+        val result = client().validate("1.1", "println(1);")
+
+        val rejected = assertIs<ValidationResult.Rejected>(result)
+        assertEquals("PrintScript rechazó el pedido", rejected.message)
+    }
+
+    @Test
+    fun `un 400 con JSON mal formado vuelve como pedido rechazado con el texto por defecto`() {
+        status = 400
+        contentType = "application/problem+json"
+        response = "<html>Bad Request</html>"
+
+        val result = client().validate("1.1", "println(1);")
+
+        val rejected = assertIs<ValidationResult.Rejected>(result)
+        assertEquals("PrintScript rechazó el pedido", rejected.message)
+    }
 }
