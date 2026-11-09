@@ -5,6 +5,7 @@ import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.RestClient
+import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
 import java.nio.charset.StandardCharsets
 
@@ -31,8 +32,14 @@ class HttpPrintScriptClient(
             ValidationResult.Checked(response?.errors.orEmpty())
         } catch (exception: HttpClientErrorException.BadRequest) {
             // RestClient convierte el 400 en excepción; acá vuelve a ser un resultado
-            val detail = exception.getResponseBodyAs(RejectedResponse::class.java)?.detail
-            ValidationResult.Rejected(detail ?: "PrintScript rechazó el pedido")
+            val detail =
+                try {
+                    exception.getResponseBodyAs(RejectedResponse::class.java)?.detail
+                } catch (ignored: RestClientException) {
+                    // El body no es Problem Details (por ejemplo, HTML de un proxy)
+                    null
+                }
+            ValidationResult.Rejected(detail?.takeUnless { it.isBlank() } ?: "PrintScript rechazó el pedido")
         }
 }
 
