@@ -11,6 +11,8 @@ import java.util.UUID
 class Snippet(
     @Id
     val id: UUID,
+    @Column(name = "owner_id", nullable = false)
+    val ownerId: String,
     @Column(nullable = false)
     var name: String,
     @Column(nullable = false)
