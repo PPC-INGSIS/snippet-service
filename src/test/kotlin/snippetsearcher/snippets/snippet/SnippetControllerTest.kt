@@ -1,5 +1,6 @@
 package snippetsearcher.snippets.snippet
 
+import com.jayway.jsonpath.JsonPath
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -15,6 +16,8 @@ import snippetsearcher.snippets.printscript.FakePrintScriptClient
 import snippetsearcher.snippets.printscript.FakePrintScriptConfiguration
 import snippetsearcher.snippets.printscript.ValidationError
 import snippetsearcher.snippets.printscript.ValidationResult
+import java.util.UUID
+import kotlin.test.assertEquals
 
 @Import(TestcontainersConfiguration::class, FakePrintScriptConfiguration::class)
 @SpringBootTest
@@ -22,6 +25,7 @@ import snippetsearcher.snippets.printscript.ValidationResult
 class SnippetControllerTest(
     @Autowired private val mockMvc: MockMvc,
     @Autowired private val printScript: FakePrintScriptClient,
+    @Autowired private val repository: SnippetRepository,
 ) {
     private val body =
         """
@@ -45,6 +49,58 @@ class SnippetControllerTest(
                 jsonPath("$.id") { exists() }
                 jsonPath("$.name") { value("Saludo") }
             }
+    }
+
+    @Test
+    fun `POST snippets guarda el sub del token como dueno`() {
+        val response =
+            mockMvc
+                .post("/snippets") {
+                    with(jwt().jwt { it.subject("auth0|ana") })
+                    contentType = MediaType.APPLICATION_JSON
+                    content = body
+                }.andExpect { status { isCreated() } }
+                .andReturn()
+                .response.contentAsString
+
+        assertEquals("auth0|ana", ownerOf(response))
+    }
+
+    @Test
+    fun `POST snippets ignora un dueno que venga en el body`() {
+        val bodyConDueno =
+            """
+            {"name":"Saludo","description":"Pide un nombre","language":"printscript","version":"1.1",
+            "content":"println(1);","ownerId":"auth0|otro"}
+            """.trimIndent()
+
+        val response =
+            mockMvc
+                .post("/snippets") {
+                    with(jwt().jwt { it.subject("auth0|ana") })
+                    contentType = MediaType.APPLICATION_JSON
+                    content = bodyConDueno
+                }.andExpect { status { isCreated() } }
+                .andReturn()
+                .response.contentAsString
+
+        assertEquals("auth0|ana", ownerOf(response))
+    }
+
+    @Test
+    fun `POST snippets con un token sin sub responde 401 y no guarda nada`() {
+        val before = repository.count()
+
+        mockMvc
+            .post("/snippets") {
+                with(jwt().jwt { token -> token.claims { it.remove("sub") } })
+                contentType = MediaType.APPLICATION_JSON
+                content = body
+            }.andExpect {
+                status { isUnauthorized() }
+            }
+
+        assertEquals(before, repository.count())
     }
 
     @Test
@@ -77,5 +133,11 @@ class SnippetControllerTest(
                 status { isBadRequest() }
                 jsonPath("$.message") { value("La versión '1.3' no existe") }
             }
+    }
+
+    // La respuesta no expone el dueño, así que se busca en la base con el id que devolvió
+    private fun ownerOf(response: String): String {
+        val id = UUID.fromString(JsonPath.read<String>(response, "$.id"))
+        return repository.findById(id).orElseThrow().ownerId
     }
 }
