@@ -15,11 +15,20 @@ class SnippetRepositoryTest(
 ) {
     @Test
     fun `guarda un snippet y lo recupera por id`() {
-        val snippet = Snippet(UUID.randomUUID(), "Saludo", "Pide un nombre", "printscript", "1.1")
+        val snippet =
+            Snippet(
+                id = UUID.randomUUID(),
+                ownerId = "auth0|ana",
+                name = "Saludo",
+                description = "Pide un nombre",
+                language = "printscript",
+                version = "1.1",
+            )
 
         repository.save(snippet)
         val found = repository.findById(snippet.id).orElseThrow()
 
+        assertEquals("auth0|ana", found.ownerId)
         assertEquals("Saludo", found.name)
         assertEquals("Pide un nombre", found.description)
         assertEquals("printscript", found.language)
@@ -28,7 +37,17 @@ class SnippetRepositoryTest(
 
     @Test
     fun `actualiza los datos de un snippet`() {
-        val snippet = repository.save(Snippet(UUID.randomUUID(), "Saludo", "v1", "printscript", "1.0"))
+        val snippet =
+            repository.save(
+                Snippet(
+                    id = UUID.randomUUID(),
+                    ownerId = "auth0|ana",
+                    name = "Saludo",
+                    description = "v1",
+                    language = "printscript",
+                    version = "1.0",
+                ),
+            )
 
         snippet.name = "Saludo final"
         snippet.description = "v2"
