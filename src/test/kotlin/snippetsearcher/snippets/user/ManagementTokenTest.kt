@@ -4,13 +4,18 @@ import com.sun.net.httpserver.HttpServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.springframework.web.client.RestClientException
 import java.net.InetSocketAddress
+import java.net.SocketTimeoutException
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class ManagementTokenTest {
@@ -18,11 +23,13 @@ class ManagementTokenTest {
     private val server = HttpServer.create(InetSocketAddress(0), 0)
     private var requests = 0
     private var receivedBody = ""
+    private var delay: Duration = Duration.ZERO
     private val clock = MovableClock(Instant.parse("2026-11-22T12:00:00Z"))
 
     @BeforeEach
     fun start() {
         server.createContext("/oauth/token") { exchange ->
+            Thread.sleep(delay.toMillis())
             requests++
             receivedBody = exchange.requestBody.readAllBytes().decodeToString()
             val bytes =
@@ -40,13 +47,14 @@ class ManagementTokenTest {
         server.stop(0)
     }
 
-    private fun newToken() =
+    private fun newToken(timeout: Duration = Duration.ofSeconds(5)) =
         ManagementToken(
             "http://localhost:${server.address.port}",
             "https://test.invalid/api/v2/",
             "test-client",
             "test-secret",
             clock,
+            timeout,
         )
 
     @Test
@@ -79,6 +87,22 @@ class ManagementTokenTest {
 
         assertEquals("token-2", token.value())
         assertEquals(2, requests)
+    }
+
+    @Test
+    fun `si Auth0 no responde a tiempo, falla en vez de quedarse esperando`() {
+        delay = Duration.ofSeconds(1)
+        val token = newToken(timeout = Duration.ofMillis(100))
+
+        val error = assertFailsWith<RestClientException> { token.value() }
+        assertIs<SocketTimeoutException>(error.rootCause)
+    }
+
+    @Test
+    fun `el toString de la respuesta no muestra el token`() {
+        val response = TokenResponse("token-secreto", 86400)
+
+        assertFalse(response.toString().contains("token-secreto"))
     }
 }
 

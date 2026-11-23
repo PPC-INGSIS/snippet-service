@@ -3,16 +3,17 @@ package snippetsearcher.snippets.user
 import com.fasterxml.jackson.annotation.JsonProperty
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
-import org.springframework.web.client.RestClient
 import org.springframework.web.client.body
+import java.time.Duration
 
 // Busca usuarios en Auth0 con la Management API (GET /api/v2/users)
 @Component
 class Auth0UserDirectory(
     @Value("\${auth0.management.url}") url: String,
     private val token: ManagementToken,
+    timeout: Duration = AUTH0_TIMEOUT,
 ) : UserDirectory {
-    private val restClient = RestClient.create(url)
+    private val restClient = auth0RestClient(url, timeout)
 
     override fun search(
         name: String,
@@ -49,7 +50,8 @@ class Auth0UserDirectory(
     }
 
     companion object {
-        // Caracteres que Lucene interpreta como sintaxis. Escapados con \, se buscan como texto
+        // Caracteres que Lucene interpreta como sintaxis, incluidos los espacios (\s): "juan perez" se
+        // busca como un solo término y no como dos. Escapados con \, se buscan como texto
         private val LUCENE_SYNTAX = Regex("""[+\-&|!(){}\[\]^"~*?:\\/\s]""")
     }
 }

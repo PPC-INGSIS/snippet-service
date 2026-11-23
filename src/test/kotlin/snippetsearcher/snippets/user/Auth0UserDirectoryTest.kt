@@ -4,10 +4,15 @@ import com.sun.net.httpserver.HttpServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.springframework.web.client.RestClientException
 import java.net.InetSocketAddress
+import java.net.SocketTimeoutException
 import java.net.URLDecoder
+import java.time.Duration
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 
 class Auth0UserDirectoryTest {
     // Un servidor HTTP mínimo que hace de Auth0: da el token y responde la búsqueda
@@ -15,6 +20,7 @@ class Auth0UserDirectoryTest {
     private var usersResponse = """{"start":0,"limit":5,"length":0,"total":0,"users":[]}"""
     private var receivedQuery = ""
     private var receivedAuthorization = ""
+    private var usersDelay: Duration = Duration.ZERO
 
     @BeforeEach
     fun start() {
@@ -22,6 +28,7 @@ class Auth0UserDirectoryTest {
             respond(exchange, """{"access_token":"token-1","expires_in":86400,"token_type":"Bearer"}""")
         }
         server.createContext("/api/v2/users") { exchange ->
+            Thread.sleep(usersDelay.toMillis())
             receivedQuery = exchange.requestURI.rawQuery
             receivedAuthorization = exchange.requestHeaders.getFirst("Authorization")
             respond(exchange, usersResponse)
@@ -44,10 +51,10 @@ class Auth0UserDirectoryTest {
         exchange.responseBody.use { it.write(bytes) }
     }
 
-    private fun directory(): Auth0UserDirectory {
+    private fun directory(timeout: Duration = Duration.ofSeconds(5)): Auth0UserDirectory {
         val url = "http://localhost:${server.address.port}"
         val token = ManagementToken(url, "https://test.invalid/api/v2/", "test-client", "test-secret")
-        return Auth0UserDirectory(url, token)
+        return Auth0UserDirectory(url, token, timeout)
     }
 
     // Los parámetros que llegaron, decodificados de a uno (un & escapado no corta el valor)
@@ -104,5 +111,14 @@ class Auth0UserDirectoryTest {
         directory().search("juan (pe+rez", 0, 5)
 
         assertEquals("""name:juan\ \(pe\+rez* OR email:juan\ \(pe\+rez*""", receivedParams()["q"])
+    }
+
+    @Test
+    fun `si Auth0 no responde la busqueda a tiempo, falla en vez de quedarse esperando`() {
+        usersDelay = Duration.ofSeconds(1)
+
+        val error =
+            assertFailsWith<RestClientException> { directory(timeout = Duration.ofMillis(100)).search("an", 0, 5) }
+        assertIs<SocketTimeoutException>(error.rootCause)
     }
 }

@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonProperty
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
-import org.springframework.web.client.RestClient
 import org.springframework.web.client.body
 import java.time.Clock
 import java.time.Duration
@@ -19,11 +18,13 @@ class ManagementToken(
     @Value("\${auth0.management.client-id}") private val clientId: String,
     @Value("\${auth0.management.client-secret}") private val clientSecret: String,
     private val clock: Clock = Clock.systemUTC(),
+    timeout: Duration = AUTH0_TIMEOUT,
 ) {
-    private val restClient = RestClient.create(url)
+    private val restClient = auth0RestClient(url, timeout)
     private var current: IssuedToken? = null
 
-    // Synchronized: si llegan dos búsquedas juntas con el token vencido, se pide uno solo
+    // Synchronized: si llegan dos búsquedas juntas con el token vencido, se pide uno solo.
+    // Los demás esperan, por eso el pedido a Auth0 tiene timeout: si se cuelga, no los frena a todos
     @Synchronized
     fun value(): String {
         val token = current?.takeIf { clock.instant() < it.renewAt } ?: request().also { current = it }
@@ -64,8 +65,9 @@ class ManagementToken(
     }
 }
 
-// Respuesta de POST /oauth/token
-data class TokenResponse(
+// Respuesta de POST /oauth/token. Clase común y no data class: el toString de una data class
+// mostraría el access token si alguien la loguea
+class TokenResponse(
     @param:JsonProperty("access_token") val accessToken: String,
     @param:JsonProperty("expires_in") val expiresIn: Long,
 )
