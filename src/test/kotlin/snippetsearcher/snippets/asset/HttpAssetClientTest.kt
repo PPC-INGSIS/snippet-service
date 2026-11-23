@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
+import java.time.Duration
 import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -16,11 +17,11 @@ import kotlin.test.assertTrue
  * El cliente HTTP contra un servidor de verdad, no un mock de objetos.
  *
  * Levanta un servidor del JDK que imita al asset service: así se prueba la URL que
- * armamos, el cuerpo que mandamos y cómo traducimos cada status. Un mock del RestClient
- * probaría que llamamos al mock, no que hablamos bien HTTP.
+ * armamos, el cuerpo que mandamos, el charset y cómo traducimos cada status. Un mock del
+ * RestClient probaría que llamamos al mock, no que hablamos bien HTTP.
  *
- * No uso el contenedor real de la cátedra porque además necesita Azurite al lado, y
- * porque su imagen es `latest`: un cambio de ellos rompería nuestros tests sin aviso.
+ * El servidor responde `text/event-stream` sin charset porque es lo que contesta el
+ * contenedor de la cátedra, verificado a mano contra la imagen real.
  */
 class HttpAssetClientTest {
     private lateinit var server: HttpServer
@@ -29,6 +30,8 @@ class HttpAssetClientTest {
     /** Lo que el servidor va a responder al próximo pedido. */
     private var status = 200
     private var body = ""
+    private var contentType = "text/event-stream"
+    private var delay: Duration = Duration.ZERO
 
     /** Lo que el servidor recibió, para verificar qué mandamos. */
     private var receivedMethod: String? = null
@@ -40,7 +43,7 @@ class HttpAssetClientTest {
         server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.createContext("/") { exchange -> responder(exchange) }
         server.start()
-        client = HttpAssetClient("http://127.0.0.1:${server.address.port}")
+        client = clienteCon(READ_TIMEOUT)
     }
 
     @AfterEach
@@ -48,12 +51,18 @@ class HttpAssetClientTest {
         server.stop(0)
     }
 
+    private fun clienteCon(readTimeout: Duration) =
+        HttpAssetClient("http://127.0.0.1:${server.address.port}", CONNECT_TIMEOUT, readTimeout)
+
     private fun responder(exchange: HttpExchange) {
         receivedMethod = exchange.requestMethod
         receivedPath = exchange.requestURI.path
         receivedBody = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
 
+        if (!delay.isZero) Thread.sleep(delay.toMillis())
+
         val bytes = body.toByteArray(StandardCharsets.UTF_8)
+        exchange.responseHeaders.add("Content-Type", contentType)
         // -1 es "sin cuerpo": con 0 el servidor queda esperando que escribamos algo
         exchange.sendResponseHeaders(status, if (bytes.isEmpty()) -1 else bytes.size.toLong())
         if (bytes.isNotEmpty()) exchange.responseBody.use { it.write(bytes) }
@@ -91,6 +100,17 @@ class HttpAssetClientTest {
         assertTrue(result.message.isNotBlank())
     }
 
+    // El mensaje que ve el cliente no puede traer la URL ni el puerto internos
+    @Test
+    fun `el mensaje de error no filtra la direccion del asset service`() {
+        status = 500
+
+        val result = assertIs<SaveContentResult.Failed>(client.put(UUID.randomUUID(), "println(1);"))
+
+        assertTrue("127.0.0.1" !in result.message, "el mensaje filtra el host: ${result.message}")
+        assertTrue(server.address.port.toString() !in result.message, "el mensaje filtra el puerto")
+    }
+
     @Test
     fun `put sin servidor del otro lado devuelve Failed y no tira`() {
         server.stop(0)
@@ -109,6 +129,24 @@ class HttpAssetClientTest {
         assertEquals("let x: number = 1;", assertIs<ContentResult.Found>(result).content)
         assertEquals("GET", receivedMethod)
         assertEquals("/v1/asset/snippets/$snippetId", receivedPath)
+    }
+
+    /**
+     * La regresión del bug que encontramos contra el contenedor real.
+     *
+     * El asset service responde `text/event-stream` **sin charset**. Leyendo con
+     * `body<String>()`, Spring decodifica con ISO-8859-1 y "acción" vuelve "acciÃ³n".
+     * Por eso el cliente lee bytes y decodifica UTF-8 él mismo.
+     */
+    @Test
+    fun `get decodifica UTF-8 aunque la respuesta no declare charset`() {
+        status = 200
+        contentType = "text/event-stream"
+        body = """println("acción y ñandú 🙂");"""
+
+        val result = client.get(UUID.randomUUID())
+
+        assertEquals("""println("acción y ñandú 🙂");""", assertIs<ContentResult.Found>(result).content)
     }
 
     // El 404 es una respuesta, no una falla: distinguirlo importa para no confundir
@@ -135,5 +173,22 @@ class HttpAssetClientTest {
         client.put(UUID.randomUUID(), conAcentos)
 
         assertEquals(conAcentos, receivedBody)
+    }
+
+    // Un asset service que atiende y no contesta no puede colgar al thread para siempre
+    @Test
+    fun `un servidor lento corta por read timeout y devuelve Failed`() {
+        status = 200
+        delay = Duration.ofSeconds(2)
+        val impaciente = clienteCon(Duration.ofMillis(200))
+
+        val result = impaciente.get(UUID.randomUUID())
+
+        assertIs<ContentResult.Failed>(result)
+    }
+
+    companion object {
+        private val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(2)
+        private val READ_TIMEOUT: Duration = Duration.ofSeconds(5)
     }
 }
