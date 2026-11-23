@@ -22,12 +22,12 @@ class SnippetService(
                 } else {
                     val snippet =
                         Snippet(
-                            UUID.randomUUID(),
-                            ownerId,
-                            newSnippet.name,
-                            newSnippet.description,
-                            newSnippet.language,
-                            newSnippet.version,
+                            id = UUID.randomUUID(),
+                            ownerId = ownerId,
+                            name = newSnippet.name,
+                            description = newSnippet.description,
+                            language = newSnippet.language,
+                            version = newSnippet.version,
                         )
                     CreateSnippetResult.Created(repository.save(snippet))
                 }

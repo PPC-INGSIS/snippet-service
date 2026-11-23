@@ -21,6 +21,8 @@ class SnippetController(
         @AuthenticationPrincipal jwt: Jwt,
         @RequestBody request: CreateSnippetRequest,
     ): ResponseEntity<out Any> {
+        val ownerId = jwt.subject ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
         val newSnippet =
             NewSnippet(
                 request.name,
@@ -29,8 +31,6 @@ class SnippetController(
                 request.version,
                 request.content,
             )
-
-        val ownerId = jwt.subject ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         return when (val result = service.create(ownerId, newSnippet)) {
             is CreateSnippetResult.Created ->
