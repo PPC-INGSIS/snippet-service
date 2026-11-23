@@ -34,6 +34,13 @@ class SnippetController(
                 ResponseEntity.badRequest().body(InvalidSnippetResponse(result.errors))
             is CreateSnippetResult.Rejected ->
                 ResponseEntity.badRequest().body(RejectedSnippetResponse(result.message))
+
+            // 502 y no 400: el pedido estaba bien, falló un servicio nuestro. Con un 4xx
+            // el cliente dejaría de reintentar algo que sí puede llegar a funcionar.
+            is CreateSnippetResult.ContentNotSaved ->
+                ResponseEntity
+                    .status(HttpStatus.BAD_GATEWAY)
+                    .body(RejectedSnippetResponse("No se pudo guardar el contenido: ${result.message}"))
         }
     }
 }

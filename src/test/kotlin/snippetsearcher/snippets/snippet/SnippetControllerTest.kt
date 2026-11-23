@@ -11,17 +11,20 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
 import snippetsearcher.snippets.TestcontainersConfiguration
+import snippetsearcher.snippets.asset.FakeAssetClient
+import snippetsearcher.snippets.asset.FakeAssetConfiguration
 import snippetsearcher.snippets.printscript.FakePrintScriptClient
 import snippetsearcher.snippets.printscript.FakePrintScriptConfiguration
 import snippetsearcher.snippets.printscript.ValidationError
 import snippetsearcher.snippets.printscript.ValidationResult
 
-@Import(TestcontainersConfiguration::class, FakePrintScriptConfiguration::class)
+@Import(TestcontainersConfiguration::class, FakePrintScriptConfiguration::class, FakeAssetConfiguration::class)
 @SpringBootTest
 @AutoConfigureMockMvc
 class SnippetControllerTest(
     @Autowired private val mockMvc: MockMvc,
     @Autowired private val printScript: FakePrintScriptClient,
+    @Autowired private val asset: FakeAssetClient,
 ) {
     private val body =
         """
@@ -31,6 +34,23 @@ class SnippetControllerTest(
     @BeforeEach
     fun codigoValidoPorDefecto() {
         printScript.result = ValidationResult.Checked(emptyList())
+        asset.clear()
+    }
+
+    // 502 y no 400: el pedido estaba bien, el que falló fue un servicio nuestro
+    @Test
+    fun `POST snippets con el asset service caido responde 502`() {
+        asset.failWith = "connection refused"
+
+        mockMvc
+            .post("/snippets") {
+                with(jwt())
+                contentType = MediaType.APPLICATION_JSON
+                content = body
+            }.andExpect {
+                status { isBadGateway() }
+                jsonPath("$.message") { exists() }
+            }
     }
 
     @Test
