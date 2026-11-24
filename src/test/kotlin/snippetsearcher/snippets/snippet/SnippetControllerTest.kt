@@ -60,7 +60,7 @@ class SnippetControllerTest(
 
     @BeforeEach
     fun codigoValidoPorDefecto() {
-        printScript.result = ValidationResult.Checked(emptyList())
+        printScript.clear()
         asset.clear()
         permissions.clear()
     }

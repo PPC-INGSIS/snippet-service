@@ -18,6 +18,12 @@ class FakePrintScriptClient : PrintScriptClient {
         lastVersion = version
         return result
     }
+
+    // Deja el fake como recién creado, para que ningún test dependa de lo que dejó el anterior
+    fun clear() {
+        result = ValidationResult.Checked(emptyList())
+        lastVersion = null
+    }
 }
 
 @TestConfiguration(proxyBeanMethods = false)

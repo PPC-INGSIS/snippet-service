@@ -48,7 +48,7 @@ class SnippetServiceTest(
 
     @BeforeEach
     fun codigoValidoPorDefecto() {
-        printScript.result = ValidationResult.Checked(emptyList())
+        printScript.clear()
         asset.clear()
         permissions.clear()
     }
@@ -314,6 +314,7 @@ class SnippetServiceTest(
     @Test
     fun `el snippet de otro usuario no se actualiza ni se valida`() {
         val snippet = created()
+        // created() ya validó el código al crear el snippet: se borra para probar solo el update
         printScript.lastVersion = null
 
         val result = service.update("auth0|beto", snippet.id, despedida)
