@@ -4,6 +4,7 @@ import com.sun.net.httpserver.HttpServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import snippetsearcher.snippets.security.AccessToken
 import java.net.InetSocketAddress
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -17,12 +18,14 @@ class HttpPrintScriptClientTest {
     private var contentType = "application/json"
     private var receivedQuery = ""
     private var receivedBody = ""
+    private var receivedAuthorization: String? = null
 
     @BeforeEach
     fun start() {
         server.createContext("/validate") { exchange ->
             receivedQuery = exchange.requestURI.query
             receivedBody = exchange.requestBody.readAllBytes().decodeToString()
+            receivedAuthorization = exchange.requestHeaders.getFirst("Authorization")
             val bytes = response.toByteArray()
             exchange.responseHeaders.add("Content-Type", contentType)
             exchange.sendResponseHeaders(status, bytes.size.toLong())
@@ -36,7 +39,8 @@ class HttpPrintScriptClientTest {
         server.stop(0)
     }
 
-    private fun client() = HttpPrintScriptClient("http://localhost:${server.address.port}")
+    private fun client() =
+        HttpPrintScriptClient("http://localhost:${server.address.port}", AccessToken { "token-de-prueba" })
 
     @Test
     fun `manda la version y el codigo, y sin errores devuelve lista vacia`() {
@@ -46,6 +50,13 @@ class HttpPrintScriptClientTest {
         assertTrue(checked.errors.isEmpty())
         assertEquals("version=1.1", receivedQuery)
         assertEquals("println(1);", receivedBody)
+    }
+
+    @Test
+    fun `manda el token en el header Authorization`() {
+        client().validate("1.1", "println(1);")
+
+        assertEquals("Bearer token-de-prueba", receivedAuthorization)
     }
 
     @Test
