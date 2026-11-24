@@ -4,6 +4,8 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -16,6 +18,29 @@ import java.util.UUID
 class SnippetController(
     private val service: SnippetService,
 ) {
+    @GetMapping("/{id}")
+    fun get(
+        @AuthenticationPrincipal jwt: Jwt,
+        @PathVariable id: UUID,
+    ): ResponseEntity<out Any> {
+        val ownerId = jwt.subject ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        return when (val result = service.find(ownerId, id)) {
+            is FindSnippetResult.Found -> ResponseEntity.ok(result.snippet.toDetailResponse(result.content))
+
+            FindSnippetResult.NotFound -> ResponseEntity.notFound().build()
+
+            // 500 y no 502: el asset service contestó bien, lo inconsistente son nuestros datos (ya quedó en el log)
+            FindSnippetResult.ContentMissing -> ResponseEntity.internalServerError().build()
+
+            // 502 y no 404: el snippet existe, falló el servicio que guarda su contenido
+            is FindSnippetResult.ContentUnavailable ->
+                ResponseEntity
+                    .status(HttpStatus.BAD_GATEWAY)
+                    .body(UpstreamErrorResponse("No se pudo leer el contenido del snippet"))
+        }
+    }
+
     @PostMapping
     fun create(
         @AuthenticationPrincipal jwt: Jwt,
@@ -76,11 +101,24 @@ data class SnippetResponse(
     val version: String,
 )
 
+// Lo mismo que SnippetResponse más el contenido, que solo viaja al pedir un snippet puntual
+data class SnippetDetailResponse(
+    val id: UUID,
+    val name: String,
+    val description: String,
+    val language: String,
+    val version: String,
+    val content: String,
+)
+
 data class InvalidSnippetResponse(
     val errors: List<ValidationError>,
 )
 
 private fun Snippet.toResponse() = SnippetResponse(id, name, description, language, version)
+
+private fun Snippet.toDetailResponse(content: String) =
+    SnippetDetailResponse(id, name, description, language, version, content)
 
 data class RejectedSnippetResponse(
     val message: String,
