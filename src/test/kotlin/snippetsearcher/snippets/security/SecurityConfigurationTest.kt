@@ -8,6 +8,8 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.core.authority.SimpleGrantedAuthority
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
@@ -73,6 +75,27 @@ class SecurityConfigurationTest(
                         ),
                     )
                 }
+            }
+    }
+
+    @Test
+    fun `crear un snippet con solo read_snippets responde 403`() {
+        mockMvc
+            .post("/snippets") {
+                with(jwt().authorities(SimpleGrantedAuthority("SCOPE_read:snippets")))
+                contentType = MediaType.APPLICATION_JSON
+                content = "{}"
+            }.andExpect {
+                status { isForbidden() }
+            }
+    }
+
+    @Test
+    fun `listar usuarios con solo write_snippets responde 403`() {
+        mockMvc
+            .get("/users") { with(jwt().authorities(SimpleGrantedAuthority("SCOPE_write:snippets"))) }
+            .andExpect {
+                status { isForbidden() }
             }
     }
 }

@@ -8,12 +8,16 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
+import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import snippetsearcher.snippets.TestcontainersConfiguration
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+
+// Listar usuarios es leer: los tokens de este test traen read:snippets
+private val readSnippets = SimpleGrantedAuthority("SCOPE_read:snippets")
 
 @Import(TestcontainersConfiguration::class, FakeUserDirectoryConfiguration::class)
 @SpringBootTest
@@ -34,7 +38,7 @@ class UserControllerTest(
 
         mockMvc
             .get("/users") {
-                with(jwt())
+                with(jwt().authorities(readSnippets))
                 param("name", "an")
                 param("page", "2")
                 param("page_size", "5")
@@ -52,7 +56,7 @@ class UserControllerTest(
     fun `GET users busca el nombre sin espacios en la pagina pedida`() {
         mockMvc
             .get("/users") {
-                with(jwt())
+                with(jwt().authorities(readSnippets))
                 param("name", "  ana ")
                 param("page", "2")
                 param("page_size", "5")
@@ -63,7 +67,7 @@ class UserControllerTest(
 
     @Test
     fun `GET users sin parametros busca la primera pagina de 10`() {
-        mockMvc.get("/users") { with(jwt()) }.andExpect { status { isOk() } }
+        mockMvc.get("/users") { with(jwt().authorities(readSnippets)) }.andExpect { status { isOk() } }
 
         assertEquals(FakeUserDirectory.Search("", 0, 10), directory.lastSearch)
     }
@@ -76,7 +80,7 @@ class UserControllerTest(
     ) {
         mockMvc
             .get("/users") {
-                with(jwt())
+                with(jwt().authorities(readSnippets))
                 param("page", page.toString())
                 param("page_size", pageSize.toString())
             }.andExpect {
