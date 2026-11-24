@@ -8,6 +8,7 @@ import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
 import org.springframework.http.MediaType
+import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.post
@@ -18,6 +19,9 @@ import snippetsearcher.snippets.printscript.ValidationError
 import snippetsearcher.snippets.printscript.ValidationResult
 import java.util.UUID
 import kotlin.test.assertEquals
+
+// Crear un snippet es escribir: los tokens de este test traen write:snippets
+private val writeSnippets = SimpleGrantedAuthority("SCOPE_write:snippets")
 
 @Import(TestcontainersConfiguration::class, FakePrintScriptConfiguration::class)
 @SpringBootTest
@@ -41,7 +45,7 @@ class SnippetControllerTest(
     fun `POST snippets con codigo valido responde 201 con su id`() {
         mockMvc
             .post("/snippets") {
-                with(jwt())
+                with(jwt().authorities(writeSnippets))
                 contentType = MediaType.APPLICATION_JSON
                 content = body
             }.andExpect {
@@ -56,7 +60,7 @@ class SnippetControllerTest(
         val response =
             mockMvc
                 .post("/snippets") {
-                    with(jwt().jwt { it.subject("auth0|ana") })
+                    with(jwt().jwt { it.subject("auth0|ana") }.authorities(writeSnippets))
                     contentType = MediaType.APPLICATION_JSON
                     content = body
                 }.andExpect { status { isCreated() } }
@@ -77,7 +81,7 @@ class SnippetControllerTest(
         val response =
             mockMvc
                 .post("/snippets") {
-                    with(jwt().jwt { it.subject("auth0|ana") })
+                    with(jwt().jwt { it.subject("auth0|ana") }.authorities(writeSnippets))
                     contentType = MediaType.APPLICATION_JSON
                     content = bodyConDueno
                 }.andExpect { status { isCreated() } }
@@ -93,7 +97,7 @@ class SnippetControllerTest(
 
         mockMvc
             .post("/snippets") {
-                with(jwt().jwt { token -> token.claims { it.remove("sub") } })
+                with(jwt().jwt { token -> token.claims { it.remove("sub") } }.authorities(writeSnippets))
                 contentType = MediaType.APPLICATION_JSON
                 content = body
             }.andExpect {
@@ -109,7 +113,7 @@ class SnippetControllerTest(
 
         mockMvc
             .post("/snippets") {
-                with(jwt())
+                with(jwt().authorities(writeSnippets))
                 contentType = MediaType.APPLICATION_JSON
                 content = body
             }.andExpect {
@@ -126,7 +130,7 @@ class SnippetControllerTest(
 
         mockMvc
             .post("/snippets") {
-                with(jwt())
+                with(jwt().authorities(writeSnippets))
                 contentType = MediaType.APPLICATION_JSON
                 content = body
             }.andExpect {
