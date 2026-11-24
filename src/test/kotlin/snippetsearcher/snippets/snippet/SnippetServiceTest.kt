@@ -232,4 +232,73 @@ class SnippetServiceTest(
 
         assertIs<FindSnippetResult.NotFound>(result)
     }
+
+    private val invitado = "auth0|beto"
+
+    @Test
+    fun `el dueno comparte y Permisos queda con un acceso READ`() {
+        val created = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo))
+
+        val result = service.share(owner, created.snippet.id, invitado)
+
+        assertIs<ShareSnippetResult.Shared>(result)
+        assertEquals("READ", permissions.rolDe(created.snippet.id, invitado))
+    }
+
+    // El dueno sigue siendo dueno: compartir no le cambia el rol a nadie
+    @Test
+    fun `compartir no toca el rol del dueno`() {
+        val created = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo))
+
+        service.share(owner, created.snippet.id, invitado)
+
+        assertEquals("OWNER", permissions.rolDe(created.snippet.id, owner))
+    }
+
+    // 404 y no 403: distinguirlos le confirmaria a cualquiera que ese id existe
+    @Test
+    fun `el que no es dueno no puede compartir`() {
+        val created = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo))
+
+        val result = service.share("auth0|intruso", created.snippet.id, invitado)
+
+        assertIs<ShareSnippetResult.NotFound>(result)
+        assertEquals(null, permissions.rolDe(created.snippet.id, invitado))
+    }
+
+    @Test
+    fun `un snippet que no existe no se comparte`() {
+        assertIs<ShareSnippetResult.NotFound>(service.share(owner, UUID.randomUUID(), invitado))
+    }
+
+    // La clave en Permisos es (snippet, usuario), asi que repetir no agrega una fila
+    @Test
+    fun `compartir dos veces con el mismo usuario no falla ni duplica`() {
+        val created = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo))
+
+        service.share(owner, created.snippet.id, invitado)
+        val segunda = service.share(owner, created.snippet.id, invitado)
+
+        assertIs<ShareSnippetResult.Shared>(segunda)
+        // El dueno y el invitado, nadie mas
+        assertEquals(2, permissions.accesosDe(created.snippet.id))
+    }
+
+    @Test
+    fun `si Permisos falla no se comparte`() {
+        val created = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo))
+        permissions.failWith = "connection refused"
+
+        val result = service.share(owner, created.snippet.id, invitado)
+
+        val fallo = assertIs<ShareSnippetResult.PermissionsUnavailable>(result)
+        assertEquals("connection refused", fallo.message)
+    }
+
+    @Test
+    fun `sin userId no se comparte`() {
+        val created = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo))
+
+        assertIs<ShareSnippetResult.BlankTargetUser>(service.share(owner, created.snippet.id, "   "))
+    }
 }

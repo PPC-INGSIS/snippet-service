@@ -41,6 +41,32 @@ class SnippetController(
         }
     }
 
+    @PostMapping("/{id}/share")
+    fun share(
+        @AuthenticationPrincipal jwt: Jwt,
+        @PathVariable id: UUID,
+        @RequestBody request: ShareSnippetRequest,
+    ): ResponseEntity<out Any> {
+        val ownerId = jwt.subject ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        return when (val result = service.share(ownerId, id, request.userId)) {
+            // La UI espera el snippet de vuelta, no un cuerpo vacio
+            is ShareSnippetResult.Shared -> ResponseEntity.ok(result.snippet.toResponse())
+
+            // 404 y no 403: un 403 le confirmaria a cualquiera que ese id existe
+            ShareSnippetResult.NotFound -> ResponseEntity.notFound().build()
+
+            ShareSnippetResult.BlankTargetUser ->
+                ResponseEntity.badRequest().body(RejectedSnippetResponse("Falta el userId con quien compartir"))
+
+            // 502: el pedido estaba bien, fallo un servicio nuestro
+            is ShareSnippetResult.PermissionsUnavailable ->
+                ResponseEntity
+                    .status(HttpStatus.BAD_GATEWAY)
+                    .body(UpstreamErrorResponse("No se pudo registrar el acceso"))
+        }
+    }
+
     @PostMapping
     fun create(
         @AuthenticationPrincipal jwt: Jwt,
@@ -84,6 +110,11 @@ class SnippetController(
         }
     }
 }
+
+// Con quien se comparte. El snippet va en la URL
+data class ShareSnippetRequest(
+    val userId: String,
+)
 
 data class CreateSnippetRequest(
     val name: String,

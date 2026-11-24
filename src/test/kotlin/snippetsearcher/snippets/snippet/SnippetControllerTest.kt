@@ -288,4 +288,69 @@ class SnippetControllerTest(
         val id = UUID.fromString(JsonPath.read<String>(response, "$.id"))
         return repository.findById(id).orElseThrow().ownerId
     }
+
+    private fun crearSnippetDe(sub: String): String {
+        val respuesta =
+            mockMvc
+                .post("/snippets") {
+                    with(jwt().jwt { it.subject(sub) }.authorities(writeSnippets))
+                    contentType = MediaType.APPLICATION_JSON
+                    content = body
+                }.andExpect { status { isCreated() } }
+                .andReturn()
+                .response.contentAsString
+        return JsonPath.read(respuesta, "$.id")
+    }
+
+    private fun compartir(
+        snippetId: String,
+        comoSub: String,
+        conUserId: String,
+    ) = mockMvc.post("/snippets/{id}/share", snippetId) {
+        with(jwt().jwt { it.subject(comoSub) }.authorities(writeSnippets))
+        contentType = MediaType.APPLICATION_JSON
+        content = """{"userId":"$conUserId"}"""
+    }
+
+    @Test
+    fun `POST share del dueno responde 200 con el snippet`() {
+        val id = crearSnippetDe("auth0|ana")
+
+        compartir(id, comoSub = "auth0|ana", conUserId = "auth0|beto").andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(id) }
+            jsonPath("$.name") { value("Saludo") }
+        }
+    }
+
+    // 404 y no 403: un 403 le confirmaria a cualquiera que ese id existe
+    @Test
+    fun `POST share de alguien que no es dueno responde 404`() {
+        val id = crearSnippetDe("auth0|ana")
+
+        compartir(id, comoSub = "auth0|intruso", conUserId = "auth0|beto").andExpect {
+            status { isNotFound() }
+        }
+    }
+
+    @Test
+    fun `POST share sin userId responde 400`() {
+        val id = crearSnippetDe("auth0|ana")
+
+        compartir(id, comoSub = "auth0|ana", conUserId = "").andExpect {
+            status { isBadRequest() }
+            jsonPath("$.message") { exists() }
+        }
+    }
+
+    @Test
+    fun `POST share con Permisos caido responde 502`() {
+        val id = crearSnippetDe("auth0|ana")
+        permissions.failWith = "connection refused"
+
+        compartir(id, comoSub = "auth0|ana", conUserId = "auth0|beto").andExpect {
+            status { isBadGateway() }
+            jsonPath("$.message") { exists() }
+        }
+    }
 }
