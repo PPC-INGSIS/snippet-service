@@ -5,6 +5,8 @@ import org.springframework.stereotype.Service
 import snippetsearcher.snippets.asset.AssetClient
 import snippetsearcher.snippets.asset.ContentResult
 import snippetsearcher.snippets.asset.SaveContentResult
+import snippetsearcher.snippets.permissions.PermissionsClient
+import snippetsearcher.snippets.permissions.RegisterOwnerResult
 import snippetsearcher.snippets.printscript.PrintScriptClient
 import snippetsearcher.snippets.printscript.ValidationResult
 import java.util.UUID
@@ -14,6 +16,7 @@ class SnippetService(
     private val repository: SnippetRepository,
     private val printScriptClient: PrintScriptClient,
     private val assetClient: AssetClient,
+    private val permissionsClient: PermissionsClient,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -55,14 +58,15 @@ class SnippetService(
     }
 
     /**
-     * Guarda primero el contenido y después la fila.
+     * Contenido, dueño y recién al final la fila.
      *
-     * El orden es lo que importa: si el asset service falla, no llegamos a escribir en la
-     * base y no queda un snippet sin cuerpo. Al revés, una fila cuyo contenido no existe
-     * se rompe recién al leerla, y hasta entonces nadie se entera.
+     * **Lo que hace visible al snippet es la fila en Postgres**: todo lo que se escriba
+     * antes, si algo falla después, queda huérfano y nadie lo ve. Al revés, una fila cuyo
+     * contenido o cuyo dueño no existen se rompe recién cuando alguien la lee, y hasta
+     * entonces nadie se entera.
      *
-     * El precio es que si falla el save, el contenido queda huérfano en el bucket: basura
-     * que nadie referencia, bastante más barata que una fila rota.
+     * El precio son datos huérfanos: un archivo en el bucket o un acceso en Permisos que
+     * no referencia a ningún snippet. Es basura, mucho más barata que una fila rota.
      */
     private fun store(
         ownerId: String,
@@ -70,21 +74,26 @@ class SnippetService(
     ): CreateSnippetResult {
         val id = UUID.randomUUID()
 
-        return when (val saved = assetClient.put(id, newSnippet.content)) {
-            is SaveContentResult.Failed -> CreateSnippetResult.ContentNotSaved(saved.message)
-            is SaveContentResult.Saved -> {
-                val snippet =
-                    Snippet(
-                        id = id,
-                        ownerId = ownerId,
-                        name = newSnippet.name,
-                        description = newSnippet.description,
-                        language = newSnippet.language,
-                        version = newSnippet.version,
-                    )
-                CreateSnippetResult.Created(repository.save(snippet))
-            }
+        when (val saved = assetClient.put(id, newSnippet.content)) {
+            is SaveContentResult.Failed -> return CreateSnippetResult.ContentNotSaved(saved.message)
+            is SaveContentResult.Saved -> Unit
         }
+
+        when (val registered = permissionsClient.registerOwner(id, ownerId)) {
+            is RegisterOwnerResult.Failed -> return CreateSnippetResult.OwnerNotRegistered(registered.message)
+            is RegisterOwnerResult.Registered -> Unit
+        }
+
+        val snippet =
+            Snippet(
+                id = id,
+                ownerId = ownerId,
+                name = newSnippet.name,
+                description = newSnippet.description,
+                language = newSnippet.language,
+                version = newSnippet.version,
+            )
+        return CreateSnippetResult.Created(repository.save(snippet))
     }
 }
 

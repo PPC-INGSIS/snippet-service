@@ -19,6 +19,12 @@ sealed interface CreateSnippetResult {
 
     // El código estaba bien, pero el asset service no pudo guardar el contenido.
     // No es culpa de quien pidió: no se guardó nada y el pedido se puede reintentar.
+    // El codigo estaba bien y el contenido se guardo, pero Permisos no pudo registrar
+    // al dueno. Sin dueno el snippet no se podria compartir ni borrar, asi que no se crea.
+    data class OwnerNotRegistered(
+        val message: String,
+    ) : CreateSnippetResult
+
     data class ContentNotSaved(
         val message: String,
     ) : CreateSnippetResult

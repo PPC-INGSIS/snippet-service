@@ -71,6 +71,12 @@ class SnippetController(
             // el cliente dejaría de reintentar algo que sí puede llegar a funcionar.
             // El detalle no viaja: ya quedó en el log del cliente, y suele traer la URL
             // y el puerto internos.
+            // Mismo criterio que el contenido: fallo un servicio nuestro, no el pedido
+            is CreateSnippetResult.OwnerNotRegistered ->
+                ResponseEntity
+                    .status(HttpStatus.BAD_GATEWAY)
+                    .body(UpstreamErrorResponse("No se pudo registrar al dueño del snippet"))
+
             is CreateSnippetResult.ContentNotSaved ->
                 ResponseEntity
                     .status(HttpStatus.BAD_GATEWAY)
