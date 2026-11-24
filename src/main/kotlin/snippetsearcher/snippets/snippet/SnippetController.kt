@@ -1,9 +1,12 @@
 package snippetsearcher.snippets.snippet
 
+import com.fasterxml.jackson.annotation.JsonProperty
 import org.springframework.http.HttpStatus
+import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.web.bind.annotation.BindParam
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -18,6 +21,45 @@ import java.util.UUID
 class SnippetController(
     private val service: SnippetService,
 ) {
+    /**
+     * Mis snippets. Los parámetros y la forma de la respuesta son las que manda la UI
+     * (`listSnippetDescriptors` y `PaginatedSnippets` en printscript-ui): `page` arranca en 0,
+     * `page_size` viaja en snake_case y `count` es el total, no cuántos trae esta página.
+     */
+    @GetMapping
+    fun list(
+        @AuthenticationPrincipal jwt: Jwt,
+        request: ListSnippetsRequest,
+    ): ResponseEntity<out Any> {
+        val ownerId = jwt.subject ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        if (request.page < 0 || request.pageSize !in 1..MAX_PAGE_SIZE) {
+            return badRequest("page tiene que ser 0 o más, y page_size, entre 1 y $MAX_PAGE_SIZE")
+        }
+
+        return when (val result = service.list(ownerId, request.toQuery())) {
+            is ListSnippetsResult.Listed ->
+                ResponseEntity.ok(
+                    PaginatedSnippetsResponse(
+                        page = request.page,
+                        pageSize = request.pageSize,
+                        count = result.total,
+                        snippets = result.snippets.map { it.toResponse() },
+                    ),
+                )
+
+            // 400 y no un orden por defecto: si la UI manda un campo mal escrito, que se note
+            is ListSnippetsResult.SortFieldNotAllowed ->
+                badRequest(
+                    "No se puede ordenar por '${result.field}'. " +
+                        "Campos permitidos: ${SnippetSortField.fields.joinToString(", ")}",
+                )
+
+            is ListSnippetsResult.SortDirectionNotAllowed ->
+                badRequest("sortDirection tiene que ser asc o desc, no '${result.direction}'")
+        }
+    }
+
     @GetMapping("/{id}")
     fun get(
         @AuthenticationPrincipal jwt: Jwt,
@@ -83,7 +125,32 @@ class SnippetController(
                     .body(UpstreamErrorResponse("No se pudo guardar el contenido del snippet"))
         }
     }
+
+    companion object {
+        // Cuánto puede pedir la UI de una vez: la tabla ofrece hasta 100 filas por página
+        const val MAX_PAGE_SIZE = 100
+    }
 }
+
+private fun badRequest(detail: String): ResponseEntity<ProblemDetail> =
+    ResponseEntity.badRequest().body(ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail))
+
+/**
+ * Los parámetros del listado, juntos en un objeto en vez de uno por uno en la firma.
+ *
+ * Los nombres son los que manda la UI: `page` arranca en 0 y `page_size` viaja en
+ * snake_case, de ahí el @BindParam.
+ */
+data class ListSnippetsRequest(
+    val page: Int = 0,
+    @param:BindParam("page_size") val pageSize: Int = 10,
+    val snippetName: String? = null,
+    val language: String? = null,
+    val sortBy: String? = null,
+    val sortDirection: String? = null,
+)
+
+private fun ListSnippetsRequest.toQuery() = SnippetQuery(page, pageSize, snippetName, language, sortBy, sortDirection)
 
 data class CreateSnippetRequest(
     val name: String,
@@ -99,6 +166,14 @@ data class SnippetResponse(
     val description: String,
     val language: String,
     val version: String,
+)
+
+// La forma que espera la UI (PaginatedSnippets en printscript-ui)
+data class PaginatedSnippetsResponse(
+    val page: Int,
+    @get:JsonProperty("page_size") val pageSize: Int,
+    val count: Long,
+    val snippets: List<SnippetResponse>,
 )
 
 // Lo mismo que SnippetResponse más el contenido, que solo viaja al pedir un snippet puntual
