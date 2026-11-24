@@ -11,6 +11,7 @@ import org.springframework.http.MediaType
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import snippetsearcher.snippets.TestcontainersConfiguration
 import snippetsearcher.snippets.asset.FakeAssetClient
@@ -24,6 +25,9 @@ import kotlin.test.assertEquals
 
 // Crear un snippet es escribir: los tokens de este test traen write:snippets
 private val writeSnippets = SimpleGrantedAuthority("SCOPE_write:snippets")
+
+// Pedir un snippet es leer
+private val readSnippets = SimpleGrantedAuthority("SCOPE_read:snippets")
 
 @Import(TestcontainersConfiguration::class, FakePrintScriptConfiguration::class, FakeAssetConfiguration::class)
 @SpringBootTest
@@ -157,6 +161,89 @@ class SnippetControllerTest(
                 status { isBadRequest() }
                 jsonPath("$.message") { value("La versión '1.3' no existe") }
             }
+    }
+
+    @Test
+    fun `GET snippets por id del dueno responde 200 con los datos y el contenido`() {
+        val id = saved("auth0|ana")
+
+        mockMvc
+            .get("/snippets/$id") {
+                with(jwt().jwt { it.subject("auth0|ana") }.authorities(readSnippets))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.id") { value(id.toString()) }
+                jsonPath("$.name") { value("Saludo") }
+                jsonPath("$.description") { value("Pide un nombre") }
+                jsonPath("$.language") { value("printscript") }
+                jsonPath("$.version") { value("1.1") }
+                jsonPath("$.content") { value("println(1);") }
+            }
+    }
+
+    @Test
+    fun `GET snippets por id inexistente responde 404`() {
+        mockMvc
+            .get("/snippets/${UUID.randomUUID()}") {
+                with(jwt().jwt { it.subject("auth0|ana") }.authorities(readSnippets))
+            }.andExpect {
+                status { isNotFound() }
+            }
+    }
+
+    // Igual que uno inexistente: un 403 confirmaría que ese id existe
+    @Test
+    fun `GET snippets por id de otro usuario responde 404`() {
+        val id = saved("auth0|ana")
+
+        mockMvc
+            .get("/snippets/$id") {
+                with(jwt().jwt { it.subject("auth0|beto") }.authorities(readSnippets))
+            }.andExpect {
+                status { isNotFound() }
+            }
+    }
+
+    @Test
+    fun `GET snippets por id con el asset service caido responde 502`() {
+        val id = saved("auth0|ana")
+        asset.failWith = "connection refused"
+
+        mockMvc
+            .get("/snippets/$id") {
+                with(jwt().jwt { it.subject("auth0|ana") }.authorities(readSnippets))
+            }.andExpect {
+                status { isBadGateway() }
+                jsonPath("$.message") { exists() }
+            }
+    }
+
+    @Test
+    fun `GET snippets con un id que no es un UUID responde 400`() {
+        mockMvc
+            .get("/snippets/no-es-un-uuid") {
+                with(jwt().authorities(readSnippets))
+            }.andExpect {
+                status { isBadRequest() }
+            }
+    }
+
+    @Test
+    fun `GET snippets por id con un token sin sub responde 401`() {
+        mockMvc
+            .get("/snippets/${UUID.randomUUID()}") {
+                with(jwt().jwt { token -> token.claims { it.remove("sub") } }.authorities(readSnippets))
+            }.andExpect {
+                status { isUnauthorized() }
+            }
+    }
+
+    // Un snippet ya guardado, con su contenido en el asset service, listo para pedirlo
+    private fun saved(ownerId: String): UUID {
+        val id = UUID.randomUUID()
+        asset.put(id, "println(1);")
+        repository.save(Snippet(id, ownerId, "Saludo", "Pide un nombre", "printscript", "1.1"))
+        return id
     }
 
     // La respuesta no expone el dueño, así que se busca en la base con el id que devolvió

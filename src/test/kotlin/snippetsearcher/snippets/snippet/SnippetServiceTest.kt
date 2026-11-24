@@ -13,6 +13,7 @@ import snippetsearcher.snippets.printscript.FakePrintScriptClient
 import snippetsearcher.snippets.printscript.FakePrintScriptConfiguration
 import snippetsearcher.snippets.printscript.ValidationError
 import snippetsearcher.snippets.printscript.ValidationResult
+import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
@@ -117,5 +118,66 @@ class SnippetServiceTest(
         service.create(owner, saludo.copy(content = "println(1)"))
 
         assertEquals(0, asset.count())
+    }
+
+    @Test
+    fun `el dueno ve su snippet con el contenido`() {
+        val created = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo))
+
+        val result = service.find(owner, created.snippet.id)
+
+        val found = assertIs<FindSnippetResult.Found>(result)
+        assertEquals("Saludo", found.snippet.name)
+        assertEquals("println(1);", found.content)
+    }
+
+    @Test
+    fun `un id que no existe no se encuentra`() {
+        val result = service.find(owner, UUID.randomUUID())
+
+        assertIs<FindSnippetResult.NotFound>(result)
+    }
+
+    // Igual que uno que no existe: si respondiera distinto, confirmaría que el id existe
+    @Test
+    fun `el snippet de otro usuario no se encuentra`() {
+        val created = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo))
+
+        val result = service.find("auth0|beto", created.snippet.id)
+
+        assertIs<FindSnippetResult.NotFound>(result)
+    }
+
+    // Distinto de "no existe": el snippet está, lo que falló es el servicio que guarda su contenido
+    @Test
+    fun `si el asset service falla el contenido no esta disponible`() {
+        val created = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo))
+        asset.failWith = "connection refused"
+
+        val result = service.find(owner, created.snippet.id)
+
+        val unavailable = assertIs<FindSnippetResult.ContentUnavailable>(result)
+        assertEquals("connection refused", unavailable.message)
+    }
+
+    @Test
+    fun `una fila sin contenido en el asset service no esta disponible`() {
+        val created = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo))
+        asset.clear()
+
+        val result = service.find(owner, created.snippet.id)
+
+        assertIs<FindSnippetResult.ContentUnavailable>(result)
+    }
+
+    // El asset service solo se consulta si el snippet es del usuario
+    @Test
+    fun `el snippet de otro usuario no consulta al asset service`() {
+        val created = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo))
+        asset.failWith = "no se tendría que llamar"
+
+        val result = service.find("auth0|beto", created.snippet.id)
+
+        assertIs<FindSnippetResult.NotFound>(result)
     }
 }

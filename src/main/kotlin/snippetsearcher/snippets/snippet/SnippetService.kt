@@ -2,6 +2,7 @@ package snippetsearcher.snippets.snippet
 
 import org.springframework.stereotype.Service
 import snippetsearcher.snippets.asset.AssetClient
+import snippetsearcher.snippets.asset.ContentResult
 import snippetsearcher.snippets.asset.SaveContentResult
 import snippetsearcher.snippets.printscript.PrintScriptClient
 import snippetsearcher.snippets.printscript.ValidationResult
@@ -26,6 +27,27 @@ class SnippetService(
                     store(ownerId, newSnippet)
                 }
         }
+
+    /**
+     * Busca el snippet del dueño y le suma el contenido, que vive en el asset service.
+     *
+     * Primero la fila: si no es del usuario no hace falta molestar al asset service,
+     * y un snippet ajeno responde igual que uno que no existe.
+     */
+    fun find(
+        ownerId: String,
+        id: UUID,
+    ): FindSnippetResult {
+        val snippet = repository.findByIdAndOwnerId(id, ownerId) ?: return FindSnippetResult.NotFound
+
+        return when (val content = assetClient.get(id)) {
+            is ContentResult.Found -> FindSnippetResult.Found(snippet, content.content)
+            // Crear guarda el contenido antes que la fila, así que una fila sin contenido no debería existir
+            ContentResult.NotFound ->
+                FindSnippetResult.ContentUnavailable("No se encontró el contenido del snippet $id")
+            is ContentResult.Failed -> FindSnippetResult.ContentUnavailable(content.message)
+        }
+    }
 
     /**
      * Guarda primero el contenido y después la fila.
