@@ -54,17 +54,19 @@ class HttpPrintScriptClient(
             // El body no es Problem Details (por ejemplo, HTML de un proxy)
             null
         }
+
+    companion object {
+        // Se comparan números y no constantes de HttpStatus: el 413 tiene dos (PAYLOAD_TOO_LARGE, deprecada,
+        // y CONTENT_TOO_LARGE), así que el número es lo único que no es ambiguo
+        private const val BAD_REQUEST = 400
+        private const val CONTENT_TOO_LARGE = 413
+
+        // 400: versión inexistente o body vacío. 413: el código supera el tamaño máximo de PrintScript
+        private val REJECTED_STATUSES = setOf(BAD_REQUEST, CONTENT_TOO_LARGE)
+
+        private const val DEFAULT_REJECTION = "PrintScript rechazó el pedido"
+    }
 }
-
-// Se comparan números y no constantes de HttpStatus: el 413 tiene dos (PAYLOAD_TOO_LARGE, deprecada,
-// y CONTENT_TOO_LARGE), así que el número es lo único que no es ambiguo
-private const val BAD_REQUEST = 400
-private const val CONTENT_TOO_LARGE = 413
-
-// 400: versión inexistente o body vacío. 413: el código supera el tamaño máximo de PrintScript
-private val REJECTED_STATUSES = setOf(BAD_REQUEST, CONTENT_TOO_LARGE)
-
-private const val DEFAULT_REJECTION = "PrintScript rechazó el pedido"
 
 // Respuesta 200 de printscript-service
 data class ValidationResponse(
