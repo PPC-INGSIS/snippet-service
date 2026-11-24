@@ -25,6 +25,17 @@ class SnippetServiceTest(
     @Autowired private val printScript: FakePrintScriptClient,
     @Autowired private val asset: FakeAssetClient,
 ) {
+    private val owner = "auth0|ana"
+
+    private val saludo =
+        NewSnippet(
+            name = "Saludo",
+            description = "Pide un nombre",
+            language = "printscript",
+            version = "1.1",
+            content = "println(1);",
+        )
+
     @BeforeEach
     fun codigoValidoPorDefecto() {
         printScript.result = ValidationResult.Checked(emptyList())
@@ -32,11 +43,12 @@ class SnippetServiceTest(
     }
 
     @Test
-    fun `crea un snippet valido y lo deja guardado`() {
-        val result = service.create("Saludo", "Pide un nombre", "printscript", "1.1", "println(1);")
+    fun `crea un snippet valido y lo deja guardado con su dueno`() {
+        val result = service.create(owner, saludo)
 
         val created = assertIs<CreateSnippetResult.Created>(result)
         val found = repository.findById(created.snippet.id).orElseThrow()
+        assertEquals("auth0|ana", found.ownerId)
         assertEquals("Saludo", found.name)
         assertEquals("Pide un nombre", found.description)
         assertEquals("printscript", found.language)
@@ -45,10 +57,8 @@ class SnippetServiceTest(
 
     @Test
     fun `cada snippet creado recibe un id distinto`() {
-        val first =
-            assertIs<CreateSnippetResult.Created>(service.create("Uno", "primero", "printscript", "1.1", "println(1);"))
-        val second =
-            assertIs<CreateSnippetResult.Created>(service.create("Dos", "segundo", "printscript", "1.1", "println(2);"))
+        val first = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo))
+        val second = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo.copy(name = "Otro")))
 
         assertNotEquals(first.snippet.id, second.snippet.id)
     }
@@ -58,7 +68,7 @@ class SnippetServiceTest(
         printScript.result = ValidationResult.Checked(listOf(ValidationError("Falta el punto y coma", 1, 11)))
         val before = repository.count()
 
-        val result = service.create("Roto", "No compila", "printscript", "1.1", "println(1)")
+        val result = service.create(owner, saludo.copy(content = "println(1)"))
 
         val invalid = assertIs<CreateSnippetResult.Invalid>(result)
         assertEquals("Falta el punto y coma", invalid.errors.single().message)
@@ -70,7 +80,7 @@ class SnippetServiceTest(
         printScript.result = ValidationResult.Rejected("La versión '1.3' no existe")
         val before = repository.count()
 
-        val result = service.create("Saludo", "Pide un nombre", "printscript", "1.3", "println(1);")
+        val result = service.create(owner, saludo.copy(version = "1.3"))
 
         val rejected = assertIs<CreateSnippetResult.Rejected>(result)
         assertEquals("La versión '1.3' no existe", rejected.message)
@@ -79,7 +89,7 @@ class SnippetServiceTest(
 
     @Test
     fun `el contenido queda guardado en el asset service y no en la base`() {
-        val result = service.create("Saludo", "Pide un nombre", "printscript", "1.1", "println(1);")
+        val result = service.create(owner, saludo)
 
         val created = assertIs<CreateSnippetResult.Created>(result)
         val content = assertIs<ContentResult.Found>(asset.get(created.snippet.id))
@@ -92,7 +102,7 @@ class SnippetServiceTest(
         asset.failWith = "connection refused"
         val before = repository.count()
 
-        val result = service.create("Saludo", "Pide un nombre", "printscript", "1.1", "println(1);")
+        val result = service.create(owner, saludo)
 
         val failed = assertIs<CreateSnippetResult.ContentNotSaved>(result)
         assertEquals("connection refused", failed.message)
@@ -104,7 +114,7 @@ class SnippetServiceTest(
     fun `un snippet invalido no escribe contenido`() {
         printScript.result = ValidationResult.Checked(listOf(ValidationError("Falta el punto y coma", 1, 11)))
 
-        service.create("Roto", "No compila", "printscript", "1.1", "println(1)")
+        service.create(owner, saludo.copy(content = "println(1)"))
 
         assertEquals(0, asset.count())
     }

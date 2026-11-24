@@ -14,19 +14,16 @@ class SnippetService(
     private val assetClient: AssetClient,
 ) {
     fun create(
-        name: String,
-        description: String,
-        language: String,
-        version: String,
-        content: String,
+        ownerId: String,
+        newSnippet: NewSnippet,
     ): CreateSnippetResult =
-        when (val validation = printScriptClient.validate(version, content)) {
+        when (val validation = printScriptClient.validate(newSnippet.version, newSnippet.content)) {
             is ValidationResult.Rejected -> CreateSnippetResult.Rejected(validation.message)
             is ValidationResult.Checked ->
                 if (validation.errors.isNotEmpty()) {
                     CreateSnippetResult.Invalid(validation.errors)
                 } else {
-                    store(name, description, language, version, content)
+                    store(ownerId, newSnippet)
                 }
         }
 
@@ -41,18 +38,34 @@ class SnippetService(
      * que nadie referencia, bastante más barata que una fila rota.
      */
     private fun store(
-        name: String,
-        description: String,
-        language: String,
-        version: String,
-        content: String,
+        ownerId: String,
+        newSnippet: NewSnippet,
     ): CreateSnippetResult {
         val id = UUID.randomUUID()
 
-        return when (val saved = assetClient.put(id, content)) {
+        return when (val saved = assetClient.put(id, newSnippet.content)) {
             is SaveContentResult.Failed -> CreateSnippetResult.ContentNotSaved(saved.message)
-            is SaveContentResult.Saved ->
-                CreateSnippetResult.Created(repository.save(Snippet(id, name, description, language, version)))
+            is SaveContentResult.Saved -> {
+                val snippet =
+                    Snippet(
+                        id = id,
+                        ownerId = ownerId,
+                        name = newSnippet.name,
+                        description = newSnippet.description,
+                        language = newSnippet.language,
+                        version = newSnippet.version,
+                    )
+                CreateSnippetResult.Created(repository.save(snippet))
+            }
         }
     }
 }
+
+// Lo que manda el usuario para crear un snippet. El dueño va aparte porque no lo elige él: sale del token
+data class NewSnippet(
+    val name: String,
+    val description: String,
+    val language: String,
+    val version: String,
+    val content: String,
+)

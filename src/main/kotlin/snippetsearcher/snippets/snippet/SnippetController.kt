@@ -2,6 +2,8 @@ package snippetsearcher.snippets.snippet
 
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.annotation.AuthenticationPrincipal
+import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
@@ -16,10 +18,13 @@ class SnippetController(
 ) {
     @PostMapping
     fun create(
+        @AuthenticationPrincipal jwt: Jwt,
         @RequestBody request: CreateSnippetRequest,
     ): ResponseEntity<out Any> {
-        val result =
-            service.create(
+        val ownerId = jwt.subject ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val newSnippet =
+            NewSnippet(
                 request.name,
                 request.description,
                 request.language,
@@ -27,11 +32,13 @@ class SnippetController(
                 request.content,
             )
 
-        return when (result) {
+        return when (val result = service.create(ownerId, newSnippet)) {
             is CreateSnippetResult.Created ->
                 ResponseEntity.status(HttpStatus.CREATED).body(result.snippet.toResponse())
+
             is CreateSnippetResult.Invalid ->
                 ResponseEntity.badRequest().body(InvalidSnippetResponse(result.errors))
+
             is CreateSnippetResult.Rejected ->
                 ResponseEntity.badRequest().body(RejectedSnippetResponse(result.message))
 
