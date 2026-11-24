@@ -7,13 +7,21 @@ import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
+import snippetsearcher.snippets.security.AccessToken
+import snippetsearcher.snippets.security.BearerTokenInterceptor
 import java.nio.charset.StandardCharsets
 
 @Component
 class HttpPrintScriptClient(
     @Value("\${printscript.url}") baseUrl: String,
+    accessToken: AccessToken,
 ) : PrintScriptClient {
-    private val restClient = RestClient.create(baseUrl)
+    private val restClient =
+        RestClient
+            .builder()
+            .baseUrl(baseUrl)
+            .requestInterceptor(BearerTokenInterceptor(accessToken))
+            .build()
 
     override fun validate(
         version: String,
