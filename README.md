@@ -91,7 +91,7 @@ Corre, en orden:
 
 ## Observabilidad
 
-El servicio manda trazas, métricas y logs a New Relic con el **agente de Java**, según lo decidido en [infraestructura#46](https://github.com/PPC-INGSIS/infraestructura/issues/46). Mismo armado que en  y : el jar del agente se baja en la configuración `newRelicAgent` de Gradle, `copyNewRelicAgent` lo deja en `build/newrelic/` y el Dockerfile arranca con `-javaagent:/app/newrelic.jar`.
+El servicio manda trazas, métricas y logs a New Relic con el **agente de Java**, según lo decidido en [infraestructura#46](https://github.com/PPC-INGSIS/infraestructura/issues/46). Mismo armado que en `permissions-service` y `printscript-service`: el jar del agente se baja en la configuración `newRelicAgent` de Gradle, `copyNewRelicAgent` lo deja en `build/newrelic/` y el Dockerfile arranca con `-javaagent:/app/newrelic.jar`.
 
 `newrelic/newrelic.yml` lleva **valores literales**: el agente no entiende `${VAR}` en ese archivo. Lo que cambia por entorno lo pisan las variables `NEW_RELIC_*`, que el agente lee solo.
 
