@@ -9,6 +9,8 @@ import snippetsearcher.snippets.TestcontainersConfiguration
 import snippetsearcher.snippets.asset.ContentResult
 import snippetsearcher.snippets.asset.FakeAssetClient
 import snippetsearcher.snippets.asset.FakeAssetConfiguration
+import snippetsearcher.snippets.permissions.FakePermissionsClient
+import snippetsearcher.snippets.permissions.FakePermissionsConfiguration
 import snippetsearcher.snippets.printscript.FakePrintScriptClient
 import snippetsearcher.snippets.printscript.FakePrintScriptConfiguration
 import snippetsearcher.snippets.printscript.ValidationError
@@ -17,13 +19,19 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 
-@Import(TestcontainersConfiguration::class, FakePrintScriptConfiguration::class, FakeAssetConfiguration::class)
+@Import(
+    TestcontainersConfiguration::class,
+    FakePrintScriptConfiguration::class,
+    FakeAssetConfiguration::class,
+    FakePermissionsConfiguration::class,
+)
 @SpringBootTest
 class SnippetServiceTest(
     @Autowired private val service: SnippetService,
     @Autowired private val repository: SnippetRepository,
     @Autowired private val printScript: FakePrintScriptClient,
     @Autowired private val asset: FakeAssetClient,
+    @Autowired private val permissions: FakePermissionsClient,
 ) {
     private val owner = "auth0|ana"
 
@@ -40,6 +48,7 @@ class SnippetServiceTest(
     fun codigoValidoPorDefecto() {
         printScript.result = ValidationResult.Checked(emptyList())
         asset.clear()
+        permissions.clear()
     }
 
     @Test
@@ -117,5 +126,48 @@ class SnippetServiceTest(
         service.create(owner, saludo.copy(content = "println(1)"))
 
         assertEquals(0, asset.count())
+    }
+
+    @Test
+    fun `crear un snippet registra al dueno en Permisos`() {
+        val result = service.create(owner, saludo)
+
+        val created = assertIs<CreateSnippetResult.Created>(result)
+        assertEquals(owner, permissions.ownerOf(created.snippet.id))
+    }
+
+    // El criterio del ticket: sin dueno el snippet no se podria compartir ni borrar
+    @Test
+    fun `si Permisos falla no se guarda el snippet`() {
+        permissions.failWith = "connection refused"
+        val before = repository.count()
+
+        val result = service.create(owner, saludo)
+
+        val failed = assertIs<CreateSnippetResult.OwnerNotRegistered>(result)
+        assertEquals("connection refused", failed.message)
+        assertEquals(before, repository.count())
+    }
+
+    // El contenido va antes que el dueno, asi que si Permisos falla ya quedo escrito.
+    // Es basura que nadie referencia: mas barata que una fila sin dueno.
+    @Test
+    fun `si Permisos falla el contenido queda huerfano pero no hay snippet`() {
+        permissions.failWith = "connection refused"
+
+        service.create(owner, saludo)
+
+        assertEquals(1, asset.count())
+        assertEquals(0, permissions.count())
+    }
+
+    // Si el asset service falla ni se intenta registrar al dueno
+    @Test
+    fun `si el asset service falla no se llama a Permisos`() {
+        asset.failWith = "connection refused"
+
+        service.create(owner, saludo)
+
+        assertEquals(0, permissions.count())
     }
 }

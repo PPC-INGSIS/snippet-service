@@ -15,6 +15,8 @@ import org.springframework.test.web.servlet.post
 import snippetsearcher.snippets.TestcontainersConfiguration
 import snippetsearcher.snippets.asset.FakeAssetClient
 import snippetsearcher.snippets.asset.FakeAssetConfiguration
+import snippetsearcher.snippets.permissions.FakePermissionsClient
+import snippetsearcher.snippets.permissions.FakePermissionsConfiguration
 import snippetsearcher.snippets.printscript.FakePrintScriptClient
 import snippetsearcher.snippets.printscript.FakePrintScriptConfiguration
 import snippetsearcher.snippets.printscript.ValidationError
@@ -25,7 +27,12 @@ import kotlin.test.assertEquals
 // Crear un snippet es escribir: los tokens de este test traen write:snippets
 private val writeSnippets = SimpleGrantedAuthority("SCOPE_write:snippets")
 
-@Import(TestcontainersConfiguration::class, FakePrintScriptConfiguration::class, FakeAssetConfiguration::class)
+@Import(
+    TestcontainersConfiguration::class,
+    FakePrintScriptConfiguration::class,
+    FakeAssetConfiguration::class,
+    FakePermissionsConfiguration::class,
+)
 @SpringBootTest
 @AutoConfigureMockMvc
 class SnippetControllerTest(
@@ -33,6 +40,7 @@ class SnippetControllerTest(
     @Autowired private val printScript: FakePrintScriptClient,
     @Autowired private val repository: SnippetRepository,
     @Autowired private val asset: FakeAssetClient,
+    @Autowired private val permissions: FakePermissionsClient,
 ) {
     private val body =
         """
@@ -43,6 +51,22 @@ class SnippetControllerTest(
     fun codigoValidoPorDefecto() {
         printScript.result = ValidationResult.Checked(emptyList())
         asset.clear()
+        permissions.clear()
+    }
+
+    @Test
+    fun `POST snippets con Permisos caido responde 502`() {
+        permissions.failWith = "connection refused"
+
+        mockMvc
+            .post("/snippets") {
+                with(jwt().authorities(writeSnippets))
+                contentType = MediaType.APPLICATION_JSON
+                content = body
+            }.andExpect {
+                status { isBadGateway() }
+                jsonPath("$.message") { exists() }
+            }
     }
 
     // 502 y no 400: el pedido estaba bien, el que falló fue un servicio nuestro
