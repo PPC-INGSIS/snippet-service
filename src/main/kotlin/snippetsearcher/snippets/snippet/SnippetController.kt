@@ -28,8 +28,10 @@ class SnippetController(
         return when (val result = service.find(ownerId, id)) {
             is FindSnippetResult.Found -> ResponseEntity.ok(result.snippet.toDetailResponse(result.content))
 
-            // Un snippet ajeno responde lo mismo que uno inexistente: un 403 confirmaría que ese id existe
             FindSnippetResult.NotFound -> ResponseEntity.notFound().build()
+
+            // 500 y no 502: el asset service contestó bien, lo inconsistente son nuestros datos (ya quedó en el log)
+            FindSnippetResult.ContentMissing -> ResponseEntity.internalServerError().build()
 
             // 502 y no 404: el snippet existe, falló el servicio que guarda su contenido
             is FindSnippetResult.ContentUnavailable ->

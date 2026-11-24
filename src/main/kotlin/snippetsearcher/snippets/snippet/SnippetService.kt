@@ -1,5 +1,6 @@
 package snippetsearcher.snippets.snippet
 
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import snippetsearcher.snippets.asset.AssetClient
 import snippetsearcher.snippets.asset.ContentResult
@@ -14,6 +15,8 @@ class SnippetService(
     private val printScriptClient: PrintScriptClient,
     private val assetClient: AssetClient,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     fun create(
         ownerId: String,
         newSnippet: NewSnippet,
@@ -31,8 +34,7 @@ class SnippetService(
     /**
      * Busca el snippet del dueño y le suma el contenido, que vive en el asset service.
      *
-     * Primero la fila: si no es del usuario no hace falta molestar al asset service,
-     * y un snippet ajeno responde igual que uno que no existe.
+     * Primero la fila: si no es del usuario no hace falta molestar al asset service.
      */
     fun find(
         ownerId: String,
@@ -42,9 +44,12 @@ class SnippetService(
 
         return when (val content = assetClient.get(id)) {
             is ContentResult.Found -> FindSnippetResult.Found(snippet, content.content)
-            // Crear guarda el contenido antes que la fila, así que una fila sin contenido no debería existir
-            ContentResult.NotFound ->
-                FindSnippetResult.ContentUnavailable("No se encontró el contenido del snippet $id")
+            // Crear guarda el contenido antes que la fila, así que una fila sin contenido no debería existir.
+            // Si pasa, el log es el único rastro: al usuario le llega un error genérico
+            ContentResult.NotFound -> {
+                log.warn("El snippet {} existe pero su contenido no está en el asset service", id)
+                FindSnippetResult.ContentMissing
+            }
             is ContentResult.Failed -> FindSnippetResult.ContentUnavailable(content.message)
         }
     }

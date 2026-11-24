@@ -191,7 +191,6 @@ class SnippetControllerTest(
             }
     }
 
-    // Igual que uno inexistente: un 403 confirmaría que ese id existe
     @Test
     fun `GET snippets por id de otro usuario responde 404`() {
         val id = saved("auth0|ana")
@@ -215,6 +214,20 @@ class SnippetControllerTest(
             }.andExpect {
                 status { isBadGateway() }
                 jsonPath("$.message") { exists() }
+            }
+    }
+
+    // 500 y no 502: el asset service contestó bien, lo que quedó mal son nuestros datos
+    @Test
+    fun `GET snippets por id de una fila sin contenido responde 500`() {
+        val id = saved("auth0|ana")
+        asset.clear()
+
+        mockMvc
+            .get("/snippets/$id") {
+                with(jwt().jwt { it.subject("auth0|ana") }.authorities(readSnippets))
+            }.andExpect {
+                status { isInternalServerError() }
             }
     }
 

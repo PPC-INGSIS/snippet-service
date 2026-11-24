@@ -138,7 +138,6 @@ class SnippetServiceTest(
         assertIs<FindSnippetResult.NotFound>(result)
     }
 
-    // Igual que uno que no existe: si respondiera distinto, confirmaría que el id existe
     @Test
     fun `el snippet de otro usuario no se encuentra`() {
         val created = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo))
@@ -160,14 +159,15 @@ class SnippetServiceTest(
         assertEquals("connection refused", unavailable.message)
     }
 
+    // Distinto de que el asset service falle: contestó bien, pero la fila quedó sin contenido
     @Test
-    fun `una fila sin contenido en el asset service no esta disponible`() {
+    fun `una fila sin contenido en el asset service queda como contenido faltante`() {
         val created = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo))
         asset.clear()
 
         val result = service.find(owner, created.snippet.id)
 
-        assertIs<FindSnippetResult.ContentUnavailable>(result)
+        assertIs<FindSnippetResult.ContentMissing>(result)
     }
 
     // El asset service solo se consulta si el snippet es del usuario
