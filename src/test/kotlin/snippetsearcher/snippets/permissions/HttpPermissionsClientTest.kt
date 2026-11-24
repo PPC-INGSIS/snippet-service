@@ -121,6 +121,36 @@ class HttpPermissionsClientTest {
         assertIs<RegisterOwnerResult.Failed>(client.registerOwner(UUID.randomUUID(), "auth0|ana"))
     }
 
+    @Test
+    fun `deleteAccesses pide borrar a la ruta de Permisos con el token`() {
+        status = 204
+        val snippetId = UUID.randomUUID()
+
+        val result = client.deleteAccesses(snippetId)
+
+        assertIs<DeleteAccessesResult.Deleted>(result)
+        assertEquals("DELETE", receivedMethod)
+        assertEquals("/permissions/$snippetId", receivedPath)
+        assertEquals("Bearer $TOKEN", receivedAuth)
+    }
+
+    @Test
+    fun `deleteAccesses con un error del servidor devuelve Failed`() {
+        status = 500
+
+        val result = client.deleteAccesses(UUID.randomUUID())
+
+        assertIs<DeleteAccessesResult.Failed>(result)
+        assertTrue(result.message.isNotBlank())
+    }
+
+    @Test
+    fun `deleteAccesses sin servidor del otro lado devuelve Failed y no tira`() {
+        server.stop(0)
+
+        assertIs<DeleteAccessesResult.Failed>(client.deleteAccesses(UUID.randomUUID()))
+    }
+
     companion object {
         private const val TOKEN = "token-del-usuario"
         private val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(2)

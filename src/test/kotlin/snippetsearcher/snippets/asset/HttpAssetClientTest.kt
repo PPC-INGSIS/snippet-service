@@ -166,6 +166,40 @@ class HttpAssetClientTest {
     }
 
     @Test
+    fun `delete pide borrar a la ruta del asset service`() {
+        status = 204
+        val snippetId = UUID.randomUUID()
+
+        val result = client.delete(snippetId)
+
+        assertIs<DeleteContentResult.Deleted>(result)
+        assertEquals("DELETE", receivedMethod)
+        assertEquals("/v1/asset/snippets/$snippetId", receivedPath)
+    }
+
+    // El 404 es "ya no está": un reintento de un borrado que sí se hizo no puede fallar
+    @Test
+    fun `delete de algo que no existe devuelve Deleted`() {
+        status = 404
+
+        assertIs<DeleteContentResult.Deleted>(client.delete(UUID.randomUUID()))
+    }
+
+    @Test
+    fun `delete con un error del servidor devuelve Failed`() {
+        status = 500
+
+        assertIs<DeleteContentResult.Failed>(client.delete(UUID.randomUUID()))
+    }
+
+    @Test
+    fun `delete sin servidor del otro lado devuelve Failed y no tira`() {
+        server.stop(0)
+
+        assertIs<DeleteContentResult.Failed>(client.delete(UUID.randomUUID()))
+    }
+
+    @Test
     fun `el contenido viaja en UTF-8`() {
         status = 201
         val conAcentos = """println("acción y ñandú");"""

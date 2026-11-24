@@ -4,6 +4,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -39,6 +40,19 @@ class SnippetController(
                 ResponseEntity
                     .status(HttpStatus.BAD_GATEWAY)
                     .body(UpstreamErrorResponse("No se pudo leer el contenido del snippet"))
+        }
+    }
+
+    @DeleteMapping("/{id}")
+    fun delete(
+        @AuthenticationPrincipal jwt: Jwt,
+        @PathVariable id: UUID,
+    ): ResponseEntity<Void> {
+        val ownerId = jwt.subject ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        return when (service.delete(ownerId, id)) {
+            DeleteSnippetResult.Deleted -> ResponseEntity.noContent().build()
+            DeleteSnippetResult.NotFound -> ResponseEntity.notFound().build()
         }
     }
 

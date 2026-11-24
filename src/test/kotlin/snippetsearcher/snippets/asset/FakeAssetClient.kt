@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap
 class FakeAssetClient : AssetClient {
     private val contents = ConcurrentHashMap<UUID, String>()
 
-    /** Si no es null, put() falla con este mensaje en vez de guardar. */
+    /** Si no es null, put(), get() y delete() fallan con este mensaje en vez de actuar. */
     var failWith: String? = null
 
     override fun put(
@@ -31,6 +31,13 @@ class FakeAssetClient : AssetClient {
         failWith?.let { return ContentResult.Failed(it) }
 
         return contents[snippetId]?.let { ContentResult.Found(it) } ?: ContentResult.NotFound
+    }
+
+    override fun delete(snippetId: UUID): DeleteContentResult {
+        failWith?.let { return DeleteContentResult.Failed(it) }
+
+        contents.remove(snippetId)
+        return DeleteContentResult.Deleted
     }
 
     fun clear() {
