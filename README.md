@@ -89,6 +89,24 @@ Corre, en orden:
 ./gradlew ktlintFormat
 ```
 
+## Observabilidad
+
+El servicio manda trazas, métricas y logs a New Relic con el **agente de Java**, según lo decidido en [infraestructura#46](https://github.com/PPC-INGSIS/infraestructura/issues/46). Mismo armado que en  y : el jar del agente se baja en la configuración `newRelicAgent` de Gradle, `copyNewRelicAgent` lo deja en `build/newrelic/` y el Dockerfile arranca con `-javaagent:/app/newrelic.jar`.
+
+`newrelic/newrelic.yml` lleva **valores literales**: el agente no entiende `${VAR}` en ese archivo. Lo que cambia por entorno lo pisan las variables `NEW_RELIC_*`, que el agente lee solo.
+
+Los logs salen en **JSON (formato ECS)** a la salida estándar, y cada línea lleva:
+
+| Campo | De dónde sale |
+|---|---|
+| `trace.id`, `span.id` | `TraceContextFilter`, del agente. Va primero de todos los filtros |
+| `user.id` | `UserContextFilter`, el `sub` del token. Va **después** de Spring Security, que es cuando existe |
+| `service.name` | la configuración |
+
+Nunca se loguea el token: el `sub` es un identificador, el token es un secreto.
+
+Con el trace id, un pedido de `POST /snippets` se sigue por Snippets, PrintScript, el asset service y Permisos, porque el agente lo propaga entre servicios.
+
 ## Git hooks
 
 Se instalan solos la primera vez que corrés `./gradlew check`. Viven en `.githooks/` y se copian a `.git/hooks/`.
