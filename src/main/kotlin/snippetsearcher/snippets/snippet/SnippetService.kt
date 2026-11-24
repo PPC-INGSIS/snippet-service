@@ -2,6 +2,8 @@ package snippetsearcher.snippets.snippet
 
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 import snippetsearcher.snippets.asset.AssetClient
 import snippetsearcher.snippets.asset.ContentResult
 import snippetsearcher.snippets.asset.SaveContentResult
@@ -17,8 +19,13 @@ class SnippetService(
     private val printScriptClient: PrintScriptClient,
     private val assetClient: AssetClient,
     private val permissionsClient: PermissionsClient,
+    transactionManager: PlatformTransactionManager,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    // Programática y no con @Transactional: acá hay que decidir el rollback según un resultado,
+    // y @Transactional solo revierte si sale una excepción
+    private val transactions = TransactionTemplate(transactionManager)
 
     fun create(
         ownerId: String,
@@ -56,6 +63,66 @@ class SnippetService(
             is ContentResult.Failed -> FindSnippetResult.ContentUnavailable(content.message)
         }
     }
+
+    /**
+     * Reemplaza todos los datos del snippet del dueño y su contenido.
+     *
+     * Primero el dueño: a quien no lo es no hay que revisarle el código ni molestar a PrintScript.
+     * La validación va antes y fuera de la transacción, para no retener una conexión de la base
+     * mientras se espera a PrintScript.
+     */
+    fun update(
+        ownerId: String,
+        id: UUID,
+        changes: NewSnippet,
+    ): UpdateSnippetResult {
+        if (repository.findByIdAndOwnerId(id, ownerId) == null) return UpdateSnippetResult.NotFound
+
+        return when (val validation = printScriptClient.validate(changes.version, changes.content)) {
+            is ValidationResult.Rejected -> UpdateSnippetResult.Rejected(validation.message)
+            is ValidationResult.Checked ->
+                if (validation.errors.isNotEmpty()) {
+                    UpdateSnippetResult.Invalid(validation.errors)
+                } else {
+                    replace(ownerId, id, changes)
+                }
+        }
+    }
+
+    /**
+     * La fila se actualiza y se manda a la base (flush) **antes** de guardar el contenido, y el commit
+     * viene al final. Si la base rechaza algo (un dato demasiado largo, por ejemplo), falla antes de
+     * tocar el asset service. Si falla el asset service, se revierte la fila: nunca quedan datos nuevos
+     * con contenido viejo. Lo único que puede salir mal es el commit mismo, ya con el contenido guardado.
+     */
+    private fun replace(
+        ownerId: String,
+        id: UUID,
+        changes: NewSnippet,
+    ): UpdateSnippetResult =
+        checkNotNull(
+            transactions.execute<UpdateSnippetResult> { status ->
+                val snippet = repository.findByIdAndOwnerId(id, ownerId)
+                if (snippet == null) {
+                    // Pudo borrarse mientras se validaba el código
+                    UpdateSnippetResult.NotFound
+                } else {
+                    snippet.name = changes.name
+                    snippet.description = changes.description
+                    snippet.language = changes.language
+                    snippet.version = changes.version
+                    repository.saveAndFlush(snippet)
+
+                    when (val saved = assetClient.put(id, changes.content)) {
+                        is SaveContentResult.Failed -> {
+                            status.setRollbackOnly()
+                            UpdateSnippetResult.ContentNotSaved(saved.message)
+                        }
+                        is SaveContentResult.Saved -> UpdateSnippetResult.Updated(snippet)
+                    }
+                }
+            },
+        )
 
     /**
      * Contenido, dueño y recién al final la fila.

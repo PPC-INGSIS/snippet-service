@@ -7,6 +7,7 @@ import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
@@ -38,6 +39,43 @@ class SnippetController(
                 ResponseEntity
                     .status(HttpStatus.BAD_GATEWAY)
                     .body(UpstreamErrorResponse("No se pudo leer el contenido del snippet"))
+        }
+    }
+
+    @PutMapping("/{id}")
+    fun update(
+        @AuthenticationPrincipal jwt: Jwt,
+        @PathVariable id: UUID,
+        @RequestBody request: UpdateSnippetRequest,
+    ): ResponseEntity<out Any> {
+        val ownerId = jwt.subject ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        val changes =
+            NewSnippet(
+                request.name,
+                request.description,
+                request.language,
+                request.version,
+                request.content,
+            )
+
+        return when (val result = service.update(ownerId, id, changes)) {
+            is UpdateSnippetResult.Updated ->
+                ResponseEntity.ok(result.snippet.toDetailResponse(request.content))
+
+            UpdateSnippetResult.NotFound -> ResponseEntity.notFound().build()
+
+            is UpdateSnippetResult.Invalid ->
+                ResponseEntity.badRequest().body(InvalidSnippetResponse(result.errors))
+
+            is UpdateSnippetResult.Rejected ->
+                ResponseEntity.badRequest().body(RejectedSnippetResponse(result.message))
+
+            // 502 y no 400, igual que al crear: el pedido estaba bien, falló un servicio nuestro
+            is UpdateSnippetResult.ContentNotSaved ->
+                ResponseEntity
+                    .status(HttpStatus.BAD_GATEWAY)
+                    .body(UpstreamErrorResponse("No se pudo guardar el contenido del snippet"))
         }
     }
 
@@ -86,6 +124,15 @@ class SnippetController(
 }
 
 data class CreateSnippetRequest(
+    val name: String,
+    val description: String,
+    val language: String,
+    val version: String,
+    val content: String,
+)
+
+// Reemplazo total: los mismos campos que al crear, pero es otro pedido y puede cambiar por su lado
+data class UpdateSnippetRequest(
     val name: String,
     val description: String,
     val language: String,

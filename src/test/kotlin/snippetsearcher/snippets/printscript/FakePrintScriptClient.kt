@@ -8,10 +8,16 @@ import org.springframework.context.annotation.Primary
 class FakePrintScriptClient : PrintScriptClient {
     var result: ValidationResult = ValidationResult.Checked(emptyList())
 
+    // La última versión con la que se pidió validar: para probar que se usa la que manda el usuario
+    var lastVersion: String? = null
+
     override fun validate(
         version: String,
         content: String,
-    ): ValidationResult = result
+    ): ValidationResult {
+        lastVersion = version
+        return result
+    }
 }
 
 @TestConfiguration(proxyBeanMethods = false)

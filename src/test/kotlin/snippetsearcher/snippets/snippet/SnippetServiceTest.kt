@@ -19,6 +19,7 @@ import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
+import kotlin.test.assertNull
 
 @Import(
     TestcontainersConfiguration::class,
@@ -231,5 +232,115 @@ class SnippetServiceTest(
         val result = service.find("auth0|beto", created.snippet.id)
 
         assertIs<FindSnippetResult.NotFound>(result)
+    }
+
+    private val despedida =
+        NewSnippet(
+            name = "Despedida",
+            description = "Dice chau",
+            language = "printscript",
+            version = "1.0",
+            content = "println(2);",
+        )
+
+    private fun created(): Snippet = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo)).snippet
+
+    // Que la fila y el contenido sigan siendo los de saludo: no cambió nada
+    private fun assertSigueIgual(id: UUID) {
+        val row = repository.findById(id).orElseThrow()
+        assertEquals("Saludo", row.name)
+        assertEquals("Pide un nombre", row.description)
+        assertEquals("1.1", row.version)
+        assertEquals("println(1);", assertIs<ContentResult.Found>(asset.get(id)).content)
+    }
+
+    @Test
+    fun `el dueno actualiza todos los datos y el contenido`() {
+        val snippet = created()
+
+        val result = service.update(owner, snippet.id, despedida)
+
+        assertIs<UpdateSnippetResult.Updated>(result)
+        val row = repository.findById(snippet.id).orElseThrow()
+        assertEquals("Despedida", row.name)
+        assertEquals("Dice chau", row.description)
+        assertEquals("printscript", row.language)
+        assertEquals("1.0", row.version)
+        assertEquals("println(2);", assertIs<ContentResult.Found>(asset.get(snippet.id)).content)
+    }
+
+    @Test
+    fun `actualizar no cambia el dueno ni el id`() {
+        val snippet = created()
+
+        service.update(owner, snippet.id, despedida)
+
+        assertEquals(owner, repository.findById(snippet.id).orElseThrow().ownerId)
+    }
+
+    @Test
+    fun `valida el codigo con la version nueva`() {
+        val snippet = created()
+
+        service.update(owner, snippet.id, despedida)
+
+        assertEquals("1.0", printScript.lastVersion)
+    }
+
+    @Test
+    fun `con codigo invalido no cambia nada`() {
+        val snippet = created()
+        printScript.result = ValidationResult.Checked(listOf(ValidationError("Falta el punto y coma", 1, 11)))
+
+        val result = service.update(owner, snippet.id, despedida)
+
+        val invalid = assertIs<UpdateSnippetResult.Invalid>(result)
+        assertEquals("Falta el punto y coma", invalid.errors.single().message)
+        assertSigueIgual(snippet.id)
+    }
+
+    @Test
+    fun `si PrintScript rechaza el pedido no cambia nada`() {
+        val snippet = created()
+        printScript.result = ValidationResult.Rejected("La versión '1.3' no existe")
+
+        val result = service.update(owner, snippet.id, despedida.copy(version = "1.3"))
+
+        val rejected = assertIs<UpdateSnippetResult.Rejected>(result)
+        assertEquals("La versión '1.3' no existe", rejected.message)
+        assertSigueIgual(snippet.id)
+    }
+
+    @Test
+    fun `el snippet de otro usuario no se actualiza ni se valida`() {
+        val snippet = created()
+        printScript.lastVersion = null
+
+        val result = service.update("auth0|beto", snippet.id, despedida)
+
+        assertIs<UpdateSnippetResult.NotFound>(result)
+        assertNull(printScript.lastVersion)
+        assertSigueIgual(snippet.id)
+    }
+
+    @Test
+    fun `un id que no existe no se actualiza`() {
+        val result = service.update(owner, UUID.randomUUID(), despedida)
+
+        assertIs<UpdateSnippetResult.NotFound>(result)
+    }
+
+    // El criterio central del ticket: no pueden quedar datos nuevos con contenido viejo
+    @Test
+    fun `si el asset service falla se revierte la fila`() {
+        val snippet = created()
+        asset.failWith = "connection refused"
+
+        val result = service.update(owner, snippet.id, despedida)
+
+        val failed = assertIs<UpdateSnippetResult.ContentNotSaved>(result)
+        assertEquals("connection refused", failed.message)
+        asset.failWith = null
+        assertSigueIgual(snippet.id)
     }
 }
