@@ -13,6 +13,7 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.put
 import snippetsearcher.snippets.TestcontainersConfiguration
 import snippetsearcher.snippets.asset.FakeAssetClient
 import snippetsearcher.snippets.asset.FakeAssetConfiguration
@@ -51,9 +52,15 @@ class SnippetControllerTest(
         {"name":"Saludo","description":"Pide un nombre","language":"printscript","version":"1.1","content":"println(1);"}
         """.trimIndent()
 
+    // Reemplazo total de un snippet: cambia todos los datos y el contenido
+    private val updateBody =
+        """
+        {"name":"Despedida","description":"Dice chau","language":"printscript","version":"1.0","content":"println(2);"}
+        """.trimIndent()
+
     @BeforeEach
     fun codigoValidoPorDefecto() {
-        printScript.result = ValidationResult.Checked(emptyList())
+        printScript.clear()
         asset.clear()
         permissions.clear()
     }
@@ -270,6 +277,140 @@ class SnippetControllerTest(
         mockMvc
             .get("/snippets/${UUID.randomUUID()}") {
                 with(jwt().jwt { token -> token.claims { it.remove("sub") } }.authorities(readSnippets))
+            }.andExpect {
+                status { isUnauthorized() }
+            }
+    }
+
+    @Test
+    fun `PUT snippets por id del dueno responde 200 y cambia la fila`() {
+        val id = saved("auth0|ana")
+
+        mockMvc
+            .put("/snippets/$id") {
+                with(jwt().jwt { it.subject("auth0|ana") }.authorities(writeSnippets))
+                contentType = MediaType.APPLICATION_JSON
+                content = updateBody
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.id") { value(id.toString()) }
+                jsonPath("$.name") { value("Despedida") }
+                jsonPath("$.version") { value("1.0") }
+                jsonPath("$.content") { value("println(2);") }
+            }
+
+        assertEquals("Despedida", repository.findById(id).orElseThrow().name)
+    }
+
+    @Test
+    fun `PUT snippets con codigo invalido responde 400 con los errores y no cambia nada`() {
+        val id = saved("auth0|ana")
+        printScript.result = ValidationResult.Checked(listOf(ValidationError("Falta el punto y coma", 1, 11)))
+
+        mockMvc
+            .put("/snippets/$id") {
+                with(jwt().jwt { it.subject("auth0|ana") }.authorities(writeSnippets))
+                contentType = MediaType.APPLICATION_JSON
+                content = updateBody
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.errors[0].message") { value("Falta el punto y coma") }
+                jsonPath("$.errors[0].line") { value(1) }
+                jsonPath("$.errors[0].column") { value(11) }
+            }
+
+        assertEquals("Saludo", repository.findById(id).orElseThrow().name)
+    }
+
+    @Test
+    fun `PUT snippets con una version que no existe responde 400 con el mensaje`() {
+        val id = saved("auth0|ana")
+        printScript.result = ValidationResult.Rejected("La versión '1.3' no existe")
+
+        mockMvc
+            .put("/snippets/$id") {
+                with(jwt().jwt { it.subject("auth0|ana") }.authorities(writeSnippets))
+                contentType = MediaType.APPLICATION_JSON
+                content = updateBody
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.message") { value("La versión '1.3' no existe") }
+            }
+    }
+
+    @Test
+    fun `PUT snippets sin version responde 400`() {
+        val id = saved("auth0|ana")
+        val sinVersion =
+            """
+            {"name":"Despedida","description":"Dice chau","language":"printscript","content":"println(2);"}
+            """.trimIndent()
+
+        mockMvc
+            .put("/snippets/$id") {
+                with(jwt().jwt { it.subject("auth0|ana") }.authorities(writeSnippets))
+                contentType = MediaType.APPLICATION_JSON
+                content = sinVersion
+            }.andExpect {
+                status { isBadRequest() }
+            }
+
+        assertEquals("Saludo", repository.findById(id).orElseThrow().name)
+    }
+
+    @Test
+    fun `PUT snippets por id de otro usuario responde 404 y no cambia nada`() {
+        val id = saved("auth0|ana")
+
+        mockMvc
+            .put("/snippets/$id") {
+                with(jwt().jwt { it.subject("auth0|beto") }.authorities(writeSnippets))
+                contentType = MediaType.APPLICATION_JSON
+                content = updateBody
+            }.andExpect {
+                status { isNotFound() }
+            }
+
+        assertEquals("Saludo", repository.findById(id).orElseThrow().name)
+    }
+
+    @Test
+    fun `PUT snippets por id inexistente responde 404`() {
+        mockMvc
+            .put("/snippets/${UUID.randomUUID()}") {
+                with(jwt().jwt { it.subject("auth0|ana") }.authorities(writeSnippets))
+                contentType = MediaType.APPLICATION_JSON
+                content = updateBody
+            }.andExpect {
+                status { isNotFound() }
+            }
+    }
+
+    @Test
+    fun `PUT snippets con el asset service caido responde 502 y no cambia la fila`() {
+        val id = saved("auth0|ana")
+        asset.failWith = "connection refused"
+
+        mockMvc
+            .put("/snippets/$id") {
+                with(jwt().jwt { it.subject("auth0|ana") }.authorities(writeSnippets))
+                contentType = MediaType.APPLICATION_JSON
+                content = updateBody
+            }.andExpect {
+                status { isBadGateway() }
+                jsonPath("$.message") { exists() }
+            }
+
+        assertEquals("Saludo", repository.findById(id).orElseThrow().name)
+    }
+
+    @Test
+    fun `PUT snippets con un token sin sub responde 401`() {
+        mockMvc
+            .put("/snippets/${UUID.randomUUID()}") {
+                with(jwt().jwt { token -> token.claims { it.remove("sub") } }.authorities(writeSnippets))
+                contentType = MediaType.APPLICATION_JSON
+                content = updateBody
             }.andExpect {
                 status { isUnauthorized() }
             }
