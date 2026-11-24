@@ -41,6 +41,15 @@ class SnippetController(
 
             is CreateSnippetResult.Rejected ->
                 ResponseEntity.badRequest().body(RejectedSnippetResponse(result.message))
+
+            // 502 y no 400: el pedido estaba bien, falló un servicio nuestro. Con un 4xx
+            // el cliente dejaría de reintentar algo que sí puede llegar a funcionar.
+            // El detalle no viaja: ya quedó en el log del cliente, y suele traer la URL
+            // y el puerto internos.
+            is CreateSnippetResult.ContentNotSaved ->
+                ResponseEntity
+                    .status(HttpStatus.BAD_GATEWAY)
+                    .body(UpstreamErrorResponse("No se pudo guardar el contenido del snippet"))
         }
     }
 }
@@ -68,5 +77,10 @@ data class InvalidSnippetResponse(
 private fun Snippet.toResponse() = SnippetResponse(id, name, description, language, version)
 
 data class RejectedSnippetResponse(
+    val message: String,
+)
+
+// Mismo cuerpo que RejectedSnippetResponse, otro nombre: este es un 5xx, no culpa del cliente
+data class UpstreamErrorResponse(
     val message: String,
 )

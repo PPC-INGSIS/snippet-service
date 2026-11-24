@@ -16,4 +16,10 @@ sealed interface CreateSnippetResult {
     data class Rejected(
         val message: String,
     ) : CreateSnippetResult
+
+    // El código estaba bien, pero el asset service no pudo guardar el contenido.
+    // No es culpa de quien pidió: no se guardó nada y el pedido se puede reintentar.
+    data class ContentNotSaved(
+        val message: String,
+    ) : CreateSnippetResult
 }
