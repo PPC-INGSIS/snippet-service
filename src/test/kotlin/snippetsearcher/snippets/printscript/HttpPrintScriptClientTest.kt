@@ -4,9 +4,11 @@ import com.sun.net.httpserver.HttpServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.springframework.web.client.HttpClientErrorException
 import snippetsearcher.snippets.security.AccessToken
 import java.net.InetSocketAddress
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -79,8 +81,7 @@ class HttpPrintScriptClientTest {
               "title": "Bad Request",
               "status": 400,
               "detail": "La versión '1.3' no existe",
-              "instance": "/validate",
-              "message": "La versión '1.3' no existe"
+              "instance": "/validate"
             }
             """.trimIndent()
 
@@ -136,5 +137,63 @@ class HttpPrintScriptClientTest {
 
         val rejected = assertIs<ValidationResult.Rejected>(result)
         assertEquals("PrintScript rechazó el pedido", rejected.message)
+    }
+
+    @Test
+    fun `un 413 de PrintScript vuelve como pedido rechazado con su mensaje`() {
+        status = 413
+        contentType = "application/problem+json"
+        response =
+            """
+            {
+              "title": "Payload Too Large",
+              "status": 413,
+              "detail": "El código supera el tamaño máximo de 64 KB",
+              "instance": "/validate"
+            }
+            """.trimIndent()
+
+        val result = client().validate("1.1", "println(1);")
+
+        val rejected = assertIs<ValidationResult.Rejected>(result)
+        assertEquals("El código supera el tamaño máximo de 64 KB", rejected.message)
+    }
+
+    @Test
+    fun `un 413 sin detail vuelve como pedido rechazado con el texto por defecto`() {
+        status = 413
+        contentType = "application/problem+json"
+        response = """{"title":"Payload Too Large","status":413}"""
+
+        val result = client().validate("1.1", "println(1);")
+
+        val rejected = assertIs<ValidationResult.Rejected>(result)
+        assertEquals("PrintScript rechazó el pedido", rejected.message)
+    }
+
+    @Test
+    fun `un 413 en HTML vuelve como pedido rechazado con el texto por defecto`() {
+        status = 413
+        contentType = "text/html"
+        response = "<html>Request Entity Too Large</html>"
+
+        val result = client().validate("1.1", "println(1);")
+
+        val rejected = assertIs<ValidationResult.Rejected>(result)
+        assertEquals("PrintScript rechazó el pedido", rejected.message)
+    }
+
+    @Test
+    fun `otro 4xx de PrintScript sigue saliendo como excepcion`() {
+        status = 415
+        contentType = "application/problem+json"
+        response = """{"title":"Unsupported Media Type","status":415}"""
+
+        val exception =
+            assertFailsWith<HttpClientErrorException> {
+                client().validate("1.1", "println(1);")
+            }
+
+        assertEquals(415, exception.statusCode.value())
     }
 }
