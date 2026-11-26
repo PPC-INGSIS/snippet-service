@@ -93,6 +93,30 @@ class HttpPrintScriptClientTest {
         assertEquals(ValidationError("Se esperaba ')'", 1, 15), checked.errors.single())
     }
 
+    /**
+     * Hay errores sin posición: PrintScript manda `line` y `column` en `null` cuando el código
+     * desborda el parser por tener demasiados niveles de anidamiento (printscript-service#42).
+     *
+     * Con la posición no nula, esta respuesta ni se podía deserializar: el fallo de Jackson no es
+     * un `RestClientException`, así que no lo atrapaba ninguno de los catch del cliente y el pedido
+     * terminaba en un 500, perdiendo el mensaje que PrintScript sí había mandado.
+     */
+    @Test
+    fun `un error sin posicion se convierte igual`() {
+        response =
+            """
+            {"errors":[{"message":"El código tiene demasiados niveles de anidamiento","line":null,"column":null}]}
+            """.trimIndent()
+
+        val result = client().validate("1.1", "println(((((1)))));")
+
+        val checked = assertIs<ValidationResult.Checked>(result)
+        assertEquals(
+            ValidationError("El código tiene demasiados niveles de anidamiento", null, null),
+            checked.errors.single(),
+        )
+    }
+
     @Test
     fun `un 400 de PrintScript vuelve como pedido rechazado con su mensaje`() {
         status = 400
