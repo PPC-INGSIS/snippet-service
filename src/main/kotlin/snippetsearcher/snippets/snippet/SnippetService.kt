@@ -15,6 +15,7 @@ import snippetsearcher.snippets.permissions.DeleteAccessesResult
 import snippetsearcher.snippets.permissions.PermissionsClient
 import snippetsearcher.snippets.permissions.RegisterAccessResult
 import snippetsearcher.snippets.permissions.RoleResult
+import snippetsearcher.snippets.permissions.SharedSnippetsResult
 import snippetsearcher.snippets.printscript.PrintScriptClient
 import snippetsearcher.snippets.printscript.ValidationResult
 import java.util.UUID
@@ -175,10 +176,16 @@ class SnippetService(
         // pedidos, así que la UI podría ver una misma fila en dos páginas y nunca ver otra.
         val sort = Sort.by(direction, field.field).and(Sort.by(Sort.Direction.ASC, "id"))
 
+        val visible =
+            when (val result = visibleTo(ownerId, query.relation.filtro())) {
+                is Visible.By -> result.filter
+                is Visible.Rejected -> return result.reason
+            }
+
         val filters =
             Specification.allOf(
                 listOfNotNull(
-                    SnippetFilters.ownedBy(ownerId),
+                    visible,
                     query.name.filtro()?.let { SnippetFilters.nameContains(it) },
                     query.language.filtro()?.let { SnippetFilters.writtenIn(it) },
                 ),
@@ -186,6 +193,40 @@ class SnippetService(
 
         val pagina = repository.findAll(filters, PageRequest.of(query.page, query.pageSize, sort))
         return ListSnippetsResult.Listed(pagina.content, pagina.totalElements)
+    }
+
+    /**
+     * El filtro de "qué puede ver" según la relación pedida.
+     *
+     * Los propios salen de la columna y no dependen de Permisos. Los compartidos sí: se le pregunta
+     * a Permisos qué snippets tiene con rol READ, y se buscan esos ids en la misma consulta, así el
+     * orden, la paginación y el total siguen saliendo de Postgres en un solo pedido.
+     * Si Permisos no contesta, no se devuelve solo lo propio: una lista incompleta sin aviso le
+     * haría creer al usuario que le sacaron lo compartido. Pidiendo relation=owned anda igual.
+     */
+    private fun visibleTo(
+        userId: String,
+        relationValue: String?,
+    ): Visible {
+        // Sin relation: los propios y los compartidos
+        val relation =
+            if (relationValue == null) {
+                SnippetRelation.ALL
+            } else {
+                SnippetRelation.from(relationValue)
+                    ?: return Visible.Rejected(ListSnippetsResult.RelationNotAllowed(relationValue))
+            }
+
+        val owned = SnippetFilters.ownedBy(userId)
+        if (relation == SnippetRelation.OWNED) return Visible.By(owned)
+
+        return when (val shared = permissionsClient.sharedWith(userId)) {
+            is SharedSnippetsResult.Failed -> Visible.Rejected(ListSnippetsResult.SharedUnavailable(shared.message))
+            is SharedSnippetsResult.Found -> {
+                val sharedFilter = SnippetFilters.idIn(shared.snippetIds)
+                Visible.By(if (relation == SnippetRelation.SHARED) sharedFilter else owned.or(sharedFilter))
+            }
+        }
     }
 
     /**
@@ -352,3 +393,14 @@ private sealed interface SharedAccess {
 }
 
 private val READABLE_ROLES = setOf("OWNER", "READ")
+
+// El filtro de visibilidad del listado, o por qué no se pudo armar (relation inválida, Permisos caído)
+private sealed interface Visible {
+    data class By(
+        val filter: Specification<Snippet>,
+    ) : Visible
+
+    data class Rejected(
+        val reason: ListSnippetsResult,
+    ) : Visible
+}

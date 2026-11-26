@@ -112,6 +112,40 @@ class SharedSnippetControllerTest(
         assertEquals(true, repository.existsById(id))
     }
 
+    @Test
+    fun `GET snippets incluye los que le compartieron`() {
+        val id = saved("auth0|ana")
+        permissions.registerReader(id, "auth0|beto")
+
+        mockMvc
+            .get("/snippets") { with(jwt().jwt { it.subject("auth0|beto") }.authorities(readSnippets)) }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.count") { value(1) }
+                jsonPath("$.snippets[0].id") { value(id.toString()) }
+            }
+    }
+
+    @Test
+    fun `GET snippets con una relation que no existe responde 400`() {
+        mockMvc
+            .get("/snippets?relation=amigos") {
+                with(jwt().jwt { it.subject("auth0|beto") }.authorities(readSnippets))
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.detail") { exists() }
+            }
+    }
+
+    @Test
+    fun `GET snippets con Permisos caido responde 502, y con relation owned anda igual`() {
+        permissions.failWith = "connection refused"
+        val beto = jwt().jwt { it.subject("auth0|beto") }.authorities(readSnippets)
+
+        mockMvc.get("/snippets") { with(beto) }.andExpect { status { isBadGateway() } }
+        mockMvc.get("/snippets?relation=owned") { with(beto) }.andExpect { status { isOk() } }
+    }
+
     // Un snippet de ana, con su contenido en el asset service
     private fun saved(ownerId: String): UUID {
         val id = UUID.randomUUID()

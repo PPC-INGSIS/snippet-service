@@ -15,6 +15,16 @@ sealed interface ListSnippetsResult {
         val field: String,
     ) : ListSnippetsResult
 
+    /** Pidió una relación que no es owned, shared ni all. */
+    data class RelationNotAllowed(
+        val relation: String,
+    ) : ListSnippetsResult
+
+    /** Había que preguntarle a Permisos qué le compartieron y no contestó. */
+    data class SharedUnavailable(
+        val message: String,
+    ) : ListSnippetsResult
+
     /** Pidió un sentido de orden que no es asc ni desc. */
     data class SortDirectionNotAllowed(
         val direction: String,
