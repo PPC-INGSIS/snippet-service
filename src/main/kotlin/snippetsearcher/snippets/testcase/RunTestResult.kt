@@ -18,8 +18,15 @@ sealed interface RunTestResult {
     data object SnippetNotFound : RunTestResult
 
     /**
-     * No se pudo correr por algo nuestro: el contenido no se pudo leer, Permisos no contestó,
-     * o PrintScript no contestó. No es culpa de quien pidió y un reintento puede funcionar.
+     * La fila existe y el asset service contestó bien, pero no tiene el contenido del snippet:
+     * son nuestros datos los que quedaron inconsistentes. Aparte de `Unavailable` porque
+     * reintentar no lo arregla, y por eso termina en un 500 y no en un 502.
+     */
+    data object ContentMissing : RunTestResult
+
+    /**
+     * No se pudo correr por algo nuestro que puede andar en un rato: el asset service o Permisos
+     * no contestaron, o PrintScript no contestó. No es culpa de quien pidió y reintentar sirve.
      */
     data class Unavailable(
         val message: String,

@@ -170,6 +170,36 @@ class TestRunServiceTest(
         assertEquals("La versión '1.3' no existe", result.message)
     }
 
+    /**
+     * Un test con más inputs de los que el snippet lee **pasa**, y es a propósito.
+     *
+     * Lo que el test afirma es "con estos inputs imprime esto". Si el snippet ignora alguno, la
+     * afirmación sigue siendo cierta: terminó e imprimió lo esperado. Al revés no: con menos
+     * inputs de los que pide, el snippet no llega al final, así que lo que imprimió está a mitad
+     * de camino y no es el resultado de nada.
+     *
+     * Tampoco se podría detectar desde acá aunque quisiéramos: `/execute` devuelve los outputs y
+     * el error, no cuántos inputs consumió.
+     */
+    @Test
+    fun `un test con mas inputs de los que el snippet lee pasa`() {
+        val id = guardar(dueno)
+        printScript.executionResult = ExecutionResult.Ran(listOf("8"), null)
+
+        val result = assertIs<RunTestResult.Ran>(runner.run(dueno, id, TestRun(listOf("5", "3", "7"), listOf("8"))))
+
+        assertTrue(result.passed)
+    }
+
+    // El asset service contestó bien y no tiene el contenido: son nuestros datos, no un servicio caído
+    @Test
+    fun `una fila sin contenido es un caso aparte de un servicio que no contesta`() {
+        val id = UUID.randomUUID()
+        repository.save(Snippet(id, dueno, "Saludo", "Pide un nombre", "printscript", "1.1"))
+
+        assertIs<RunTestResult.ContentMissing>(runner.run(dueno, id, TestRun(emptyList(), emptyList())))
+    }
+
     @Test
     fun `si no se puede leer el contenido no se corre nada`() {
         val id = guardar(dueno)

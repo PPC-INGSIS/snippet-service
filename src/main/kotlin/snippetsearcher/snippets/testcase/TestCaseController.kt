@@ -60,6 +60,10 @@ class TestCaseController(
                     ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, result.message),
                 )
 
+            // 500 y no 502: el asset service contestó bien, lo inconsistente son nuestros datos.
+            // Mismo criterio que GET /snippets/{id}, que es el mismo caso
+            RunTestResult.ContentMissing -> ResponseEntity.internalServerError().build()
+
             // 502 y no 500: el pedido estaba bien, falló un servicio nuestro
             is RunTestResult.Unavailable ->
                 ResponseEntity

@@ -37,7 +37,7 @@ class TestRunService(
             FindSnippetResult.NotFound -> RunTestResult.SnippetNotFound
 
             // Ya quedó en el log de SnippetService: acá solo se traduce
-            FindSnippetResult.ContentMissing -> RunTestResult.Unavailable("No se pudo leer el contenido del snippet")
+            FindSnippetResult.ContentMissing -> RunTestResult.ContentMissing
 
             is FindSnippetResult.ContentUnavailable -> RunTestResult.Unavailable(found.message)
 

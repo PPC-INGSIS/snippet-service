@@ -126,6 +126,17 @@ class TestRunControllerTest(
             }
     }
 
+    // 500 y no 502: el asset service contestó bien, lo inconsistente son nuestros datos.
+    // Mismo criterio que GET /snippets/{id}, que es el mismo caso
+    @Test
+    fun `POST tests run de un snippet sin contenido responde 500`() {
+        val id = UUID.randomUUID()
+        repository.save(Snippet(id, "auth0|ana", "Saludo", "Pide un nombre", "printscript", "1.1"))
+
+        correr(id, "auth0|ana", """{"input":[],"output":[]}""")
+            .andExpect { status { isInternalServerError() } }
+    }
+
     @Test
     fun `POST tests run con una version que PrintScript rechaza responde 400`() {
         val id = guardar("auth0|ana")
