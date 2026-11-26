@@ -4,9 +4,10 @@ import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
 
-// Reemplazo de printscript-service para los tests: responde lo que le carguemos en result
+// Reemplazo de printscript-service para los tests: responde lo que le carguemos en result y versionsResult
 class FakePrintScriptClient : PrintScriptClient {
     var result: ValidationResult = ValidationResult.Checked(emptyList())
+    var versionsResult: VersionsResult = VersionsResult.Found(emptyList())
 
     // La última versión con la que se pidió validar: para probar que se usa la que manda el usuario
     var lastVersion: String? = null
@@ -19,9 +20,12 @@ class FakePrintScriptClient : PrintScriptClient {
         return result
     }
 
+    override fun versions(): VersionsResult = versionsResult
+
     // Deja el fake como recién creado, para que ningún test dependa de lo que dejó el anterior
     fun clear() {
         result = ValidationResult.Checked(emptyList())
+        versionsResult = VersionsResult.Found(emptyList())
         lastVersion = null
     }
 }
