@@ -115,6 +115,19 @@ class ExecutionRelayHandler(
 
         when (started) {
             is StartResult.Rejected -> reject(session, started.detail)
+
+            /*
+             * El motivo va en el mensaje y no en el código de cierre.
+             *
+             * El ticket pedía cerrar con 1013 ("probá más tarde"), que es el código correcto, pero
+             * no sobrevive: medido, un cierre con 1013 le llega al cliente como 1002 ("error de
+             * protocolo"), mientras 1008 y 1011 llegan tal cual. Un 1002 diría algo falso, así que
+             * se cierra con 1008 como el resto de los rechazos y la distinción viaja en el texto,
+             * que es lo que la UI tiene que mostrar igual.
+             */
+            is StartResult.TooManyExecutions ->
+                reject(session, "Ya tenés ${started.max} ejecuciones abiertas. Cerrá una para empezar otra")
+
             is StartResult.Started -> {
                 relay.execution = started.execution
                 /*

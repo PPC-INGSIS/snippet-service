@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service
 import snippetsearcher.snippets.snippet.FindSnippetResult
 import snippetsearcher.snippets.snippet.SnippetService
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Decide si una ejecución puede arrancar y la arranca.
@@ -23,6 +24,7 @@ class ExecutionStarter(
     private val snippets: SnippetService,
     private val tokens: ExecutionToken,
     private val executions: InteractiveExecutionClient,
+    private val slots: UserExecutions,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -37,13 +39,47 @@ class ExecutionStarter(
         val found = snippets.find(userId, snippetId)
         if (found !is FindSnippetResult.Found) return StartResult.Rejected(motivoDe(found))
 
+        // El lugar se toma acá, después de chequear el acceso y antes de abrir nada contra PrintScript:
+        // alguien que no puede leer el snippet no gasta un lugar, y uno que está en el tope no abre
+        // una conexión que después habría que cerrar
+        if (!slots.acquire(userId)) {
+            log.info("Se rechazó una ejecución: {} ya tiene {} abiertas", userId, slots.maxPerUser)
+            return StartResult.TooManyExecutions(slots.maxPerUser)
+        }
+
         val request = ExecutionStart(token, found.content, found.snippet.version)
         return when (val started = executions.start(request, onMessage, onClose)) {
-            is StartExecutionResult.Failed -> StartResult.Rejected("No se pudo arrancar la ejecución")
+            is StartExecutionResult.Failed -> {
+                slots.release(userId)
+                StartResult.Rejected("No se pudo arrancar la ejecución")
+            }
             is StartExecutionResult.Started -> {
                 log.info("Ejecución interactiva arrancada para el snippet {}", snippetId)
-                StartResult.Started(started.execution)
+                StartResult.Started(Releasing(userId, started.execution, slots))
             }
+        }
+    }
+
+    /**
+     * La ejecución de PrintScript, que además devuelve el lugar del usuario al cerrarse.
+     *
+     * Va envuelta y no suelta porque **todos los caminos terminan en `close()`**: cierra el browser,
+     * cierra PrintScript o falla un envío. Si el descuento estuviera en el handler habría que
+     * acordarse en cada uno de esos lugares, y el que se olvidara dejaría al usuario sin lugares
+     * para siempre. El flag hace que un `close()` repetido no descuente dos veces.
+     */
+    private class Releasing(
+        private val userId: String,
+        private val execution: InteractiveExecution,
+        private val slots: UserExecutions,
+    ) : InteractiveExecution {
+        private val released = AtomicBoolean(false)
+
+        override fun input(value: String) = execution.input(value)
+
+        override fun close() {
+            execution.close()
+            if (released.compareAndSet(false, true)) slots.release(userId)
         }
     }
 
@@ -66,5 +102,17 @@ sealed interface StartResult {
     /** No arrancó, y `detail` es lo que se le dice al browser antes de cerrar. */
     data class Rejected(
         val detail: String,
+    ) : StartResult
+
+    /**
+     * El usuario ya tiene todas las ejecuciones que puede tener abiertas.
+     *
+     * Aparte de `Rejected` porque no es lo mismo para quien pide: el pedido estaba bien y va a
+     * funcionar en cuanto cierre una. Eso se le dice en el texto y no en el código de cierre: el
+     * 1013 que correspondería no sobrevive al transporte (llega como 1002), así que el handler
+     * cierra con 1008 como el resto de los rechazos y `max` sirve para armar el mensaje.
+     */
+    data class TooManyExecutions(
+        val max: Int,
     ) : StartResult
 }
