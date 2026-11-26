@@ -14,6 +14,18 @@ interface PermissionsClient {
         snippetId: UUID,
         ownerId: String,
     ): RegisterOwnerResult
+
+    /** Saca todos los accesos del snippet: el del dueño y los compartidos. */
+    fun deleteAccesses(snippetId: UUID): DeleteAccessesResult
+}
+
+sealed interface DeleteAccessesResult {
+    data object Deleted : DeleteAccessesResult
+
+    /** No se pudo borrar: el servicio falló o no contestó. */
+    data class Failed(
+        val message: String,
+    ) : DeleteAccessesResult
 }
 
 sealed interface RegisterOwnerResult {
