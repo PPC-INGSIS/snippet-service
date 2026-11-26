@@ -13,7 +13,7 @@ import snippetsearcher.snippets.asset.DeleteContentResult
 import snippetsearcher.snippets.asset.SaveContentResult
 import snippetsearcher.snippets.permissions.DeleteAccessesResult
 import snippetsearcher.snippets.permissions.PermissionsClient
-import snippetsearcher.snippets.permissions.RegisterOwnerResult
+import snippetsearcher.snippets.permissions.RegisterAccessResult
 import snippetsearcher.snippets.printscript.PrintScriptClient
 import snippetsearcher.snippets.printscript.ValidationResult
 import java.util.UUID
@@ -76,6 +76,40 @@ class SnippetService(
                 FindSnippetResult.ContentMissing
             }
             is ContentResult.Failed -> FindSnippetResult.ContentUnavailable(content.message)
+        }
+    }
+
+    /**
+     * Le da acceso de lectura a otro usuario.
+     *
+     * Solo el dueño puede compartir: la consulta ya filtra por dueño, así que si el
+     * snippet no es suyo ni se consulta a Permisos. Compartir dos veces con el mismo
+     * usuario no falla ni duplica, porque la clave en Permisos es (snippet, usuario)
+     * y el 409 cuenta como registrado.
+     */
+    fun share(
+        ownerId: String,
+        id: UUID,
+        targetUserId: String,
+    ): ShareSnippetResult {
+        if (targetUserId.isBlank()) return ShareSnippetResult.BlankTargetUser
+
+        val snippet =
+            repository.findByIdAndOwnerId(id, ownerId) ?: run {
+                log.info("No se compartió el snippet {}: no existe o no es de este usuario", id)
+                return ShareSnippetResult.NotFound
+            }
+
+        return when (val registrado = permissionsClient.registerReader(id, targetUserId)) {
+            is RegisterAccessResult.Failed -> {
+                log.warn("No se compartió el snippet {}: Permisos no registró el acceso", id)
+                ShareSnippetResult.PermissionsUnavailable(registrado.message)
+            }
+            is RegisterAccessResult.Registered -> {
+                // Cambio de estado: alguien mas puede leer este snippet
+                log.info("Snippet {} compartido con {}", id, targetUserId)
+                ShareSnippetResult.Shared(snippet)
+            }
         }
     }
 
@@ -241,12 +275,12 @@ class SnippetService(
         }
 
         when (val registered = permissionsClient.registerOwner(id, ownerId)) {
-            is RegisterOwnerResult.Failed -> {
+            is RegisterAccessResult.Failed -> {
                 // El contenido ya quedó escrito: queda huérfano en el bucket
                 log.warn("No se creó el snippet {}: Permisos no registró al dueño. Queda contenido huérfano", id)
                 return CreateSnippetResult.OwnerNotRegistered(registered.message)
             }
-            is RegisterOwnerResult.Registered -> Unit
+            is RegisterAccessResult.Registered -> Unit
         }
 
         val snippet =

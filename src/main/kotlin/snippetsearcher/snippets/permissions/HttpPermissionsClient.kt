@@ -39,26 +39,38 @@ class HttpPermissionsClient(
     override fun registerOwner(
         snippetId: UUID,
         ownerId: String,
-    ): RegisterOwnerResult =
+    ): RegisterAccessResult = register(snippetId, ownerId, OWNER)
+
+    override fun registerReader(
+        snippetId: UUID,
+        userId: String,
+    ): RegisterAccessResult = register(snippetId, userId, READ)
+
+    // Los dos son el mismo POST: lo unico que cambia es el rol
+    private fun register(
+        snippetId: UUID,
+        userId: String,
+        role: String,
+    ): RegisterAccessResult =
         try {
             restClient
                 .post()
                 .uri("/permissions")
                 .contentType(MediaType.APPLICATION_JSON)
-                .body(RegisterAccessRequest(snippetId, ownerId, OWNER))
+                .body(RegisterAccessRequest(snippetId, userId, role))
                 .retrieve()
                 .toBodilessEntity()
 
-            RegisterOwnerResult.Registered
+            RegisterAccessResult.Registered
         } catch (ignored: HttpClientErrorException.Conflict) {
-            // 409 es "ya estaba registrado". Para nosotros el resultado es el mismo que
-            // haberlo creado: el dueño quedó. Así un reintento no falla por el primero.
-            RegisterOwnerResult.Registered
+            // 409 es "ese usuario ya tiene un rol sobre ese snippet". Para nosotros el resultado
+            // es el mismo que haberlo creado: el acceso quedó. Así un reintento no falla por el primero.
+            RegisterAccessResult.Registered
         } catch (exception: RestClientException) {
             // El detalle va al log y no a la respuesta: el mensaje de la excepción suele
             // traer la URL y el puerto internos.
-            log.warn("No se pudo registrar al dueño del snippet {} en Permisos", snippetId, exception)
-            RegisterOwnerResult.Failed(FAILED_MESSAGE)
+            log.warn("No se pudo registrar el acceso {} al snippet {} en Permisos", role, snippetId, exception)
+            RegisterAccessResult.Failed(FAILED_MESSAGE)
         }
 
     override fun deleteAccesses(snippetId: UUID): DeleteAccessesResult =
@@ -78,6 +90,7 @@ class HttpPermissionsClient(
 
     companion object {
         private const val OWNER = "OWNER"
+        private const val READ = "READ"
         private const val FAILED_MESSAGE = "Permisos no respondió"
     }
 }

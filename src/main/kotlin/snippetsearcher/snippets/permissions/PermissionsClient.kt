@@ -10,10 +10,17 @@ import java.util.UUID
  * la tabla de accesos.
  */
 interface PermissionsClient {
+    /** El que creó el snippet: puede todo. */
     fun registerOwner(
         snippetId: UUID,
         ownerId: String,
-    ): RegisterOwnerResult
+    ): RegisterAccessResult
+
+    /** Alguien con quien se compartió: solo lee. */
+    fun registerReader(
+        snippetId: UUID,
+        userId: String,
+    ): RegisterAccessResult
 
     /** Saca todos los accesos del snippet: el del dueño y los compartidos. */
     fun deleteAccesses(snippetId: UUID): DeleteAccessesResult
@@ -28,11 +35,11 @@ sealed interface DeleteAccessesResult {
     ) : DeleteAccessesResult
 }
 
-sealed interface RegisterOwnerResult {
-    data object Registered : RegisterOwnerResult
+sealed interface RegisterAccessResult {
+    data object Registered : RegisterAccessResult
 
     /** No se pudo registrar: el servicio falló o no contestó. */
     data class Failed(
         val message: String,
-    ) : RegisterOwnerResult
+    ) : RegisterAccessResult
 }

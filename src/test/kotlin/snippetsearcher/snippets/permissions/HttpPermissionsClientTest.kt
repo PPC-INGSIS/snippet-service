@@ -64,12 +64,27 @@ class HttpPermissionsClientTest {
 
         val result = client.registerOwner(snippetId, "auth0|ana")
 
-        assertIs<RegisterOwnerResult.Registered>(result)
+        assertIs<RegisterAccessResult.Registered>(result)
         assertEquals("POST", receivedMethod)
         assertEquals("/permissions", receivedPath)
         assertTrue("\"snippetId\":\"$snippetId\"" in receivedBody!!, receivedBody!!)
         assertTrue("\"userId\":\"auth0|ana\"" in receivedBody!!, receivedBody!!)
         assertTrue("\"role\":\"OWNER\"" in receivedBody!!, receivedBody!!)
+    }
+
+    // El fake escribe su propio "READ": sin este test, cambiar la constante del cliente no rompería nada
+    @Test
+    fun `registra al lector con rol READ`() {
+        val snippetId = UUID.randomUUID()
+
+        val result = client.registerReader(snippetId, "auth0|beto")
+
+        assertIs<RegisterAccessResult.Registered>(result)
+        assertEquals("POST", receivedMethod)
+        assertEquals("/permissions", receivedPath)
+        assertTrue("\"snippetId\":\"$snippetId\"" in receivedBody!!, receivedBody!!)
+        assertTrue("\"userId\":\"auth0|beto\"" in receivedBody!!, receivedBody!!)
+        assertTrue("\"role\":\"READ\"" in receivedBody!!, receivedBody!!)
     }
 
     // Permisos valida el token igual que nosotros: sin reenviarlo responde 401
@@ -90,7 +105,7 @@ class HttpPermissionsClientTest {
     fun `un 409 cuenta como registrado`() {
         status = 409
 
-        assertIs<RegisterOwnerResult.Registered>(client.registerOwner(UUID.randomUUID(), "auth0|ana"))
+        assertIs<RegisterAccessResult.Registered>(client.registerOwner(UUID.randomUUID(), "auth0|ana"))
     }
 
     @Test
@@ -99,7 +114,7 @@ class HttpPermissionsClientTest {
 
         val result = client.registerOwner(UUID.randomUUID(), "auth0|ana")
 
-        assertIs<RegisterOwnerResult.Failed>(result)
+        assertIs<RegisterAccessResult.Failed>(result)
         assertTrue(result.message.isNotBlank())
     }
 
@@ -108,7 +123,7 @@ class HttpPermissionsClientTest {
     fun `el mensaje de error no filtra la direccion de Permisos`() {
         status = 500
 
-        val result = assertIs<RegisterOwnerResult.Failed>(client.registerOwner(UUID.randomUUID(), "auth0|ana"))
+        val result = assertIs<RegisterAccessResult.Failed>(client.registerOwner(UUID.randomUUID(), "auth0|ana"))
 
         assertTrue("127.0.0.1" !in result.message, "filtra el host: ${result.message}")
         assertTrue(server.address.port.toString() !in result.message, "filtra el puerto")
@@ -118,7 +133,7 @@ class HttpPermissionsClientTest {
     fun `sin servidor del otro lado devuelve Failed y no tira`() {
         server.stop(0)
 
-        assertIs<RegisterOwnerResult.Failed>(client.registerOwner(UUID.randomUUID(), "auth0|ana"))
+        assertIs<RegisterAccessResult.Failed>(client.registerOwner(UUID.randomUUID(), "auth0|ana"))
     }
 
     @Test
