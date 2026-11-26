@@ -9,7 +9,7 @@ class PrintScriptLanguage(
     private val client: PrintScriptClient,
 ) : Language {
     override val name = "printscript"
-    override val extension = "prs"
+    override val extension = "ps"
 
     override fun versions(): VersionsResult = client.versions()
 }

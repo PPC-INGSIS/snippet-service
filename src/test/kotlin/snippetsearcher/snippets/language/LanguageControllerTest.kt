@@ -41,7 +41,7 @@ class LanguageControllerTest(
                 status { isOk() }
                 content {
                     json(
-                        """[{"language":"printscript","extension":"prs","versions":["1.0","1.1"]}]""",
+                        """[{"language":"printscript","extension":"ps","versions":["1.0","1.1"]}]""",
                         JsonCompareMode.STRICT,
                     )
                 }
