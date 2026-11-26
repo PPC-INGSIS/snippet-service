@@ -251,7 +251,6 @@ class SnippetListTest(
             description = "una descripcion",
             language = language,
             version = "1.1",
-            extension = "prs",
         ),
     )
 

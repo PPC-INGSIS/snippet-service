@@ -53,42 +53,59 @@ class SnippetAuthorTest(
         directory.clear()
     }
 
+    /**
+     * La extensión no viene del body: sale del catálogo de lenguajes.
+     *
+     * El cliente de la UI no la manda (`apiSnippetOperations.createSnippet` postea name,
+     * description, language, version y content), y además es un dato derivado del lenguaje:
+     * aceptarla permitiría un snippet printscript con extensión exe.
+     */
     @Test
-    fun `POST snippets guarda la extension que manda la UI y la devuelve`() {
+    fun `POST snippets devuelve la extension del lenguaje sin que el body la mande`() {
         val ana = dueno("crear")
-        val response =
-            mockMvc
-                .post("/snippets") {
-                    with(jwt().jwt { it.subject(ana) }.authorities(writeSnippets))
-                    contentType = MediaType.APPLICATION_JSON
-                    content =
-                        """
-                        {"name":"Saludo","description":"Pide un nombre","language":"typescript",
-                        "version":"1.1","extension":"ts","content":"println(1);"}
-                        """.trimIndent()
-                }.andExpect {
-                    status { isCreated() }
-                    jsonPath("$.extension") { value("ts") }
-                }.andReturn()
-                .response.contentAsString
 
-        // Y quedó guardada, no solo devuelta
-        val id = UUID.fromString(com.jayway.jsonpath.JsonPath.read<String>(response, "$.id"))
-        assertEquals("ts", repository.findById(id).orElseThrow().extension)
+        mockMvc
+            .post("/snippets") {
+                with(jwt().jwt { it.subject(ana) }.authorities(writeSnippets))
+                contentType = MediaType.APPLICATION_JSON
+                content =
+                    """
+                    {"name":"Saludo","description":"Pide un nombre","language":"printscript",
+                    "version":"1.1","content":"println(1);"}
+                    """.trimIndent()
+            }.andExpect {
+                status { isCreated() }
+                jsonPath("$.extension") { value("ps") }
+            }
     }
 
+    // Un lenguaje que no está en el catálogo no tiene extensión que devolver
     @Test
-    fun `GET snippets por id devuelve la extension y el nombre del dueno`() {
-        val ana = dueno("por-id")
-        directory.names = mapOf(ana to "Ana Pérez")
-        val id = guardar(ana, extension = "ts")
+    fun `un lenguaje que no esta en el catalogo devuelve la extension vacia`() {
+        val ana = dueno("sin-lenguaje")
+        val id = guardar(ana, language = "cobol")
 
         mockMvc
             .get("/snippets/$id") {
                 with(jwt().jwt { it.subject(ana) }.authorities(readSnippets))
             }.andExpect {
                 status { isOk() }
-                jsonPath("$.extension") { value("ts") }
+                jsonPath("$.extension") { value("") }
+            }
+    }
+
+    @Test
+    fun `GET snippets por id devuelve la extension y el nombre del dueno`() {
+        val ana = dueno("por-id")
+        directory.names = mapOf(ana to "Ana Pérez")
+        val id = guardar(ana)
+
+        mockMvc
+            .get("/snippets/$id") {
+                with(jwt().jwt { it.subject(ana) }.authorities(readSnippets))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.extension") { value("ps") }
                 jsonPath("$.author") { value("Ana Pérez") }
             }
     }
@@ -105,7 +122,7 @@ class SnippetAuthorTest(
             }.andExpect {
                 status { isOk() }
                 jsonPath("$.snippets[0].author") { value("Ana Pérez") }
-                jsonPath("$.snippets[0].extension") { value("prs") }
+                jsonPath("$.snippets[0].extension") { value("ps") }
             }
     }
 
@@ -175,11 +192,11 @@ class SnippetAuthorTest(
 
     private fun guardar(
         ownerId: String,
-        extension: String = "prs",
+        language: String = "printscript",
     ): UUID {
         val id = UUID.randomUUID()
         asset.put(id, "println(1);")
-        repository.save(Snippet(id, ownerId, "Saludo", "Pide un nombre", "printscript", "1.1", extension))
+        repository.save(Snippet(id, ownerId, "Saludo", "Pide un nombre", language, "1.1"))
         return id
     }
 }

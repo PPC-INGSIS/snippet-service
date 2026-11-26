@@ -43,7 +43,6 @@ class SnippetServiceTest(
             description = "Pide un nombre",
             language = "printscript",
             version = "1.1",
-            extension = "prs",
             content = "println(1);",
         )
 
@@ -241,7 +240,6 @@ class SnippetServiceTest(
             description = "Dice chau",
             language = "printscript",
             version = "1.0",
-            extension = "prs",
             content = "println(2);",
         )
 

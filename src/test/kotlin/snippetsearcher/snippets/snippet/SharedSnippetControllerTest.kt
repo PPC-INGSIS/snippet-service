@@ -49,7 +49,7 @@ class SharedSnippetControllerTest(
 
     private val updateBody =
         """
-        {"name":"Despedida","description":"Dice chau","language":"printscript","version":"1.0","extension":"prs","content":"println(2);"}
+        {"name":"Despedida","description":"Dice chau","language":"printscript","version":"1.0","content":"println(2);"}
         """.trimIndent()
 
     @BeforeEach
@@ -194,7 +194,7 @@ class SharedSnippetControllerTest(
     private fun saved(ownerId: String): UUID {
         val id = UUID.randomUUID()
         asset.put(id, "println(1);")
-        repository.save(Snippet(id, ownerId, "Saludo", "Pide un nombre", "printscript", "1.1", "prs"))
+        repository.save(Snippet(id, ownerId, "Saludo", "Pide un nombre", "printscript", "1.1"))
         return id
     }
 }

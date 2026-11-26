@@ -50,13 +50,13 @@ class SnippetControllerTest(
 ) {
     private val body =
         """
-        {"name":"Saludo","description":"Pide un nombre","language":"printscript","version":"1.1","extension":"prs","content":"println(1);"}
+        {"name":"Saludo","description":"Pide un nombre","language":"printscript","version":"1.1","content":"println(1);"}
         """.trimIndent()
 
     // Reemplazo total de un snippet: cambia todos los datos y el contenido
     private val updateBody =
         """
-        {"name":"Despedida","description":"Dice chau","language":"printscript","version":"1.0","extension":"prs","content":"println(2);"}
+        {"name":"Despedida","description":"Dice chau","language":"printscript","version":"1.0","content":"println(2);"}
         """.trimIndent()
 
     @BeforeEach
@@ -130,7 +130,7 @@ class SnippetControllerTest(
     fun `POST snippets ignora un dueno que venga en el body`() {
         val bodyConDueno =
             """
-            {"name":"Saludo","description":"Pide un nombre","language":"printscript","version":"1.1","extension":"prs",
+            {"name":"Saludo","description":"Pide un nombre","language":"printscript","version":"1.1",
             "content":"println(1);","ownerId":"auth0|otro"}
             """.trimIndent()
 
@@ -629,7 +629,7 @@ class SnippetControllerTest(
     ): UUID {
         val id = UUID.randomUUID()
         asset.put(id, "println(1);")
-        repository.save(Snippet(id, ownerId, name, "Pide un nombre", "printscript", "1.1", "prs"))
+        repository.save(Snippet(id, ownerId, name, "Pide un nombre", "printscript", "1.1"))
         return id
     }
 

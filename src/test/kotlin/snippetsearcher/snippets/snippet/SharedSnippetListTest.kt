@@ -135,7 +135,7 @@ class SharedSnippetListTest(
     private fun guardar(
         ownerId: String,
         name: String,
-    ) = repository.save(Snippet(UUID.randomUUID(), ownerId, name, "una descripcion", "printscript", "1.1", "prs"))
+    ) = repository.save(Snippet(UUID.randomUUID(), ownerId, name, "una descripcion", "printscript", "1.1"))
 
     private fun compartir(
         snippet: Snippet,

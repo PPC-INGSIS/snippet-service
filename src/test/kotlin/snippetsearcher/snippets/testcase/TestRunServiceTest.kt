@@ -195,7 +195,7 @@ class TestRunServiceTest(
     @Test
     fun `una fila sin contenido es un caso aparte de un servicio que no contesta`() {
         val id = UUID.randomUUID()
-        repository.save(Snippet(id, dueno, "Saludo", "Pide un nombre", "printscript", "1.1", "prs"))
+        repository.save(Snippet(id, dueno, "Saludo", "Pide un nombre", "printscript", "1.1"))
 
         assertIs<RunTestResult.ContentMissing>(runner.run(dueno, id, TestRun(emptyList(), emptyList())))
     }
@@ -215,7 +215,7 @@ class TestRunServiceTest(
     private fun guardar(ownerId: String): UUID {
         val id = UUID.randomUUID()
         asset.put(id, "println(1);")
-        repository.save(Snippet(id, ownerId, "Saludo", "Pide un nombre", "printscript", "1.1", "prs"))
+        repository.save(Snippet(id, ownerId, "Saludo", "Pide un nombre", "printscript", "1.1"))
         return id
     }
 }

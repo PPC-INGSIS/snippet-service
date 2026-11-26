@@ -259,8 +259,6 @@ class SnippetService(
                     snippet.description = changes.description
                     snippet.language = changes.language
                     snippet.version = changes.version
-                    // La extensión acompaña al lenguaje: el PUT es el único lugar donde el lenguaje cambia
-                    snippet.extension = changes.extension
                     repository.saveAndFlush(snippet)
 
                     when (val saved = assetClient.put(id, changes.content)) {
@@ -343,7 +341,6 @@ class SnippetService(
                 description = newSnippet.description,
                 language = newSnippet.language,
                 version = newSnippet.version,
-                extension = newSnippet.extension,
             )
         val guardado = repository.save(snippet)
         // Cambio de estado: se creó algo. El "quién" sale del MDC
@@ -362,7 +359,6 @@ data class NewSnippet(
     val description: String,
     val language: String,
     val version: String,
-    val extension: String,
     val content: String,
 )
 
