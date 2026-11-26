@@ -15,7 +15,7 @@ class FakePermissionsClient : PermissionsClient {
     // snippetId -> (userId -> rol)
     private val accesos = ConcurrentHashMap<UUID, MutableMap<String, String>>()
 
-    /** Si no es null, registerOwner, registerReader y deleteAccesses fallan con este mensaje en vez de actuar. */
+    /** Si no es null, todos los métodos fallan con este mensaje en vez de actuar. */
     var failWith: String? = null
 
     override fun registerOwner(
@@ -46,6 +46,15 @@ class FakePermissionsClient : PermissionsClient {
 
         accesos.remove(snippetId)
         return DeleteAccessesResult.Deleted
+    }
+
+    override fun roleOf(
+        snippetId: UUID,
+        userId: String,
+    ): RoleResult {
+        failWith?.let { return RoleResult.Failed(it) }
+
+        return accesos[snippetId]?.get(userId)?.let { RoleResult.Found(it) } ?: RoleResult.None
     }
 
     fun ownerOf(snippetId: UUID): String? = accesos[snippetId]?.entries?.firstOrNull { it.value == "OWNER" }?.key

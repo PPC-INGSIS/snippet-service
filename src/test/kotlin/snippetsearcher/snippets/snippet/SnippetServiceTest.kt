@@ -478,4 +478,54 @@ class SnippetServiceTest(
 
         assertIs<ShareSnippetResult.BlankTargetUser>(service.share(owner, created.snippet.id, "   "))
     }
+
+    @Test
+    fun `alguien con quien se compartio ve el snippet y su contenido`() {
+        val snippet = created()
+        service.share(owner, snippet.id, invitado)
+
+        val result = service.find(invitado, snippet.id)
+
+        val found = assertIs<FindSnippetResult.Found>(result)
+        assertEquals("Saludo", found.snippet.name)
+        assertEquals("println(1);", found.content)
+    }
+
+    @Test
+    fun `alguien sin acceso recibe NotFound aunque el snippet exista`() {
+        val snippet = created()
+
+        assertIs<FindSnippetResult.NotFound>(service.find("auth0|intruso", snippet.id))
+    }
+
+    // Ver lo propio no puede depender de Permisos: al dueño se lo reconoce por la columna
+    @Test
+    fun `el dueno ve su snippet aunque Permisos este caido`() {
+        val snippet = created()
+        permissions.failWith = "connection refused"
+
+        assertIs<FindSnippetResult.Found>(service.find(owner, snippet.id))
+    }
+
+    @Test
+    fun `si Permisos esta caido no se sabe si alguien mas puede leerlo`() {
+        val snippet = created()
+        permissions.failWith = "connection refused"
+
+        val result = service.find(invitado, snippet.id)
+
+        assertEquals("connection refused", assertIs<FindSnippetResult.AccessUnknown>(result).message)
+    }
+
+    // Leer no es modificar: actualizar, compartir y borrar siguen siendo solo del dueño
+    @Test
+    fun `alguien con quien se compartio no puede actualizar, compartir ni borrar`() {
+        val snippet = created()
+        service.share(owner, snippet.id, invitado)
+
+        assertIs<UpdateSnippetResult.NotFound>(service.update(invitado, snippet.id, despedida))
+        assertIs<ShareSnippetResult.NotFound>(service.share(invitado, snippet.id, "auth0|otro"))
+        assertIs<DeleteSnippetResult.NotFound>(service.delete(invitado, snippet.id))
+        assertSigueIgual(snippet.id)
+    }
 }

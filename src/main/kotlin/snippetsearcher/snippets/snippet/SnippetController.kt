@@ -74,6 +74,12 @@ class SnippetController(
 
             FindSnippetResult.NotFound -> ResponseEntity.notFound().build()
 
+            // 502: el snippet existe pero Permisos no contestó, así que no se sabe si se puede leer
+            is FindSnippetResult.AccessUnknown ->
+                ResponseEntity
+                    .status(HttpStatus.BAD_GATEWAY)
+                    .body(UpstreamErrorResponse("No se pudo verificar el acceso al snippet"))
+
             // 500 y no 502: el asset service contestó bien, lo inconsistente son nuestros datos (ya quedó en el log)
             FindSnippetResult.ContentMissing -> ResponseEntity.internalServerError().build()
 

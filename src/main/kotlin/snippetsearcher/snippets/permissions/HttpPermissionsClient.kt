@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component
 import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
+import org.springframework.web.client.body
 import snippetsearcher.snippets.security.AccessToken
 import snippetsearcher.snippets.security.BearerTokenInterceptor
 import java.net.http.HttpClient
@@ -88,12 +89,42 @@ class HttpPermissionsClient(
             DeleteAccessesResult.Failed(FAILED_MESSAGE)
         }
 
+    override fun roleOf(
+        snippetId: UUID,
+        userId: String,
+    ): RoleResult =
+        try {
+            // El userId va como query param: es el sub de Auth0 y puede traer "|", que en el path rompe
+            val response =
+                restClient
+                    .get()
+                    .uri("/permissions/{snippetId}?userId={userId}", snippetId, userId)
+                    .retrieve()
+                    .body<PermissionResponse>()
+
+            response?.let { RoleResult.Found(it.role) } ?: run {
+                log.warn("Permisos respondió el rol del snippet {} sin body", snippetId)
+                RoleResult.Failed(FAILED_MESSAGE)
+            }
+        } catch (ignored: HttpClientErrorException.NotFound) {
+            // El 404 de Permisos es "no tiene acceso": una respuesta, no una falla
+            RoleResult.None
+        } catch (exception: RestClientException) {
+            log.warn("No se pudo consultar el acceso al snippet {} en Permisos", snippetId, exception)
+            RoleResult.Failed(FAILED_MESSAGE)
+        }
+
     companion object {
         private const val OWNER = "OWNER"
         private const val READ = "READ"
         private const val FAILED_MESSAGE = "Permisos no respondió"
     }
 }
+
+// Respuesta de GET /permissions/{snippetId}. Solo se usa el rol
+data class PermissionResponse(
+    val role: String,
+)
 
 // El cuerpo que espera POST /permissions
 data class RegisterAccessRequest(
