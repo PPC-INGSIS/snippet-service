@@ -6,8 +6,13 @@ sealed interface FindSnippetResult {
         val content: String,
     ) : FindSnippetResult
 
-    // No existe, o existe pero es de otro usuario: a propósito no se distingue
+    // No existe, o existe y no tenés acceso: a propósito no se distingue
     data object NotFound : FindSnippetResult
+
+    // El snippet existe, no es tuyo, y Permisos no contestó: no se puede saber si te lo compartieron
+    data class AccessUnknown(
+        val message: String,
+    ) : FindSnippetResult
 
     // La fila existe y el asset service contestó bien, pero no tiene su contenido: son nuestros datos
     // los que quedaron inconsistentes. Reintentar no lo arregla.

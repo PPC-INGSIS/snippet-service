@@ -22,9 +22,11 @@ class HttpPermissionsClientTest {
     private lateinit var client: HttpPermissionsClient
 
     private var status = 201
+    private var responseBody = ""
 
     private var receivedMethod: String? = null
     private var receivedPath: String? = null
+    private var receivedQuery: String? = null
     private var receivedBody: String? = null
     private var receivedAuth: String? = null
 
@@ -51,10 +53,15 @@ class HttpPermissionsClientTest {
     private fun responder(exchange: HttpExchange) {
         receivedMethod = exchange.requestMethod
         receivedPath = exchange.requestURI.path
+        receivedQuery = exchange.requestURI.query
         receivedBody = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
         receivedAuth = exchange.requestHeaders.getFirst("Authorization")
 
-        exchange.sendResponseHeaders(status, -1)
+        val bytes = responseBody.toByteArray(StandardCharsets.UTF_8)
+        if (bytes.isNotEmpty()) exchange.responseHeaders.add("Content-Type", "application/json")
+        // -1 es "sin cuerpo": con 0 el servidor queda esperando que escribamos algo
+        exchange.sendResponseHeaders(status, if (bytes.isEmpty()) -1 else bytes.size.toLong())
+        if (bytes.isNotEmpty()) exchange.responseBody.use { it.write(bytes) }
         exchange.close()
     }
 
@@ -164,6 +171,43 @@ class HttpPermissionsClientTest {
         server.stop(0)
 
         assertIs<DeleteAccessesResult.Failed>(client.deleteAccesses(UUID.randomUUID()))
+    }
+
+    @Test
+    fun `roleOf pide el rol con el userId como query param y el token`() {
+        status = 200
+        val snippetId = UUID.randomUUID()
+        responseBody = """{"snippetId":"$snippetId","userId":"auth0|beto","role":"READ"}"""
+
+        val result = client.roleOf(snippetId, "auth0|beto")
+
+        assertEquals("READ", assertIs<RoleResult.Found>(result).role)
+        assertEquals("GET", receivedMethod)
+        assertEquals("/permissions/$snippetId", receivedPath)
+        assertEquals("userId=auth0|beto", receivedQuery)
+        assertEquals("Bearer $TOKEN", receivedAuth)
+    }
+
+    // El 404 de Permisos es "no tiene acceso", no una falla
+    @Test
+    fun `roleOf con un 404 devuelve None`() {
+        status = 404
+
+        assertIs<RoleResult.None>(client.roleOf(UUID.randomUUID(), "auth0|beto"))
+    }
+
+    @Test
+    fun `roleOf con un error del servidor devuelve Failed`() {
+        status = 500
+
+        assertIs<RoleResult.Failed>(client.roleOf(UUID.randomUUID(), "auth0|beto"))
+    }
+
+    @Test
+    fun `roleOf sin servidor del otro lado devuelve Failed y no tira`() {
+        server.stop(0)
+
+        assertIs<RoleResult.Failed>(client.roleOf(UUID.randomUUID(), "auth0|beto"))
     }
 
     companion object {

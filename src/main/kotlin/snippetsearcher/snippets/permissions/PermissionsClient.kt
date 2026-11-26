@@ -24,6 +24,27 @@ interface PermissionsClient {
 
     /** Saca todos los accesos del snippet: el del dueño y los compartidos. */
     fun deleteAccesses(snippetId: UUID): DeleteAccessesResult
+
+    /** Qué puede hacer ese usuario sobre ese snippet, según Permisos. */
+    fun roleOf(
+        snippetId: UUID,
+        userId: String,
+    ): RoleResult
+}
+
+sealed interface RoleResult {
+    /** El rol tal como lo guarda Permisos: OWNER o READ. */
+    data class Found(
+        val role: String,
+    ) : RoleResult
+
+    /** No tiene ningún acceso. Es una respuesta, no una falla. */
+    data object None : RoleResult
+
+    /** No se pudo saber: el servicio falló o no contestó. Distinto de "no tiene acceso". */
+    data class Failed(
+        val message: String,
+    ) : RoleResult
 }
 
 sealed interface DeleteAccessesResult {

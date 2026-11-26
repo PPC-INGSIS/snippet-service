@@ -14,6 +14,7 @@ import snippetsearcher.snippets.asset.SaveContentResult
 import snippetsearcher.snippets.permissions.DeleteAccessesResult
 import snippetsearcher.snippets.permissions.PermissionsClient
 import snippetsearcher.snippets.permissions.RegisterAccessResult
+import snippetsearcher.snippets.permissions.RoleResult
 import snippetsearcher.snippets.printscript.PrintScriptClient
 import snippetsearcher.snippets.printscript.ValidationResult
 import java.util.UUID
@@ -52,20 +53,29 @@ class SnippetService(
         }
 
     /**
-     * Busca el snippet del dueño y le suma el contenido, que vive en el asset service.
+     * Un snippet que el usuario puede leer (es el dueño, o se lo compartieron), con su contenido,
+     * que vive en el asset service.
      *
-     * Primero la fila: si no es del usuario no hace falta molestar al asset service.
+     * Al dueño se lo reconoce por la columna, sin preguntarle a Permisos: es el caso común y así
+     * ver lo propio no depende de otro servicio. Si no es el dueño, Permisos decide.
+     * Sin acceso es 404 igual que si no existiera: un 403 le confirmaría a cualquiera que ese id existe.
+     * Primero el acceso y después el contenido: a quien no puede leerlo no hace falta pedírselo al asset service.
      */
     fun find(
-        ownerId: String,
+        userId: String,
         id: UUID,
     ): FindSnippetResult {
         val snippet =
-            repository.findByIdAndOwnerId(id, ownerId) ?: run {
-                // Resultado de la consulta, no un error: puede no existir o ser de otro
-                log.info("No se encontró el snippet {} para este usuario", id)
-                return FindSnippetResult.NotFound
-            }
+            repository.findByIdAndOwnerId(id, userId)
+                ?: when (val access = sharedSnippet(userId, id)) {
+                    is SharedAccess.Granted -> access.snippet
+                    SharedAccess.Denied -> {
+                        // Resultado de la consulta, no un error: puede no existir o no estar compartido
+                        log.info("No se encontró el snippet {} para este usuario", id)
+                        return FindSnippetResult.NotFound
+                    }
+                    is SharedAccess.Unknown -> return FindSnippetResult.AccessUnknown(access.message)
+                }
 
         return when (val content = assetClient.get(id)) {
             is ContentResult.Found -> FindSnippetResult.Found(snippet, content.content)
@@ -76,6 +86,22 @@ class SnippetService(
                 FindSnippetResult.ContentMissing
             }
             is ContentResult.Failed -> FindSnippetResult.ContentUnavailable(content.message)
+        }
+    }
+
+    private fun sharedSnippet(
+        userId: String,
+        id: UUID,
+    ): SharedAccess {
+        val snippet = repository.findById(id).orElse(null) ?: return SharedAccess.Denied
+
+        return when (val role = permissionsClient.roleOf(id, userId)) {
+            // OWNER también: Permisos es el que decide, aunque hoy el dueño ya entró por la columna
+            is RoleResult.Found ->
+                if (role.role in READABLE_ROLES) SharedAccess.Granted(snippet) else SharedAccess.Denied
+            RoleResult.None -> SharedAccess.Denied
+            // El detalle ya quedó en el log del cliente
+            is RoleResult.Failed -> SharedAccess.Unknown(role.message)
         }
     }
 
@@ -311,3 +337,18 @@ data class NewSnippet(
     val version: String,
     val content: String,
 )
+
+// Lo que dice Permisos de alguien que no es el dueño. Privado: fuera del service solo importa FindSnippetResult
+private sealed interface SharedAccess {
+    data class Granted(
+        val snippet: Snippet,
+    ) : SharedAccess
+
+    data object Denied : SharedAccess
+
+    data class Unknown(
+        val message: String,
+    ) : SharedAccess
+}
+
+private val READABLE_ROLES = setOf("OWNER", "READ")
