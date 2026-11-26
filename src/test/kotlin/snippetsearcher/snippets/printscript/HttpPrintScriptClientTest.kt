@@ -1,5 +1,6 @@
 package snippetsearcher.snippets.printscript
 
+import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
@@ -27,13 +28,19 @@ class HttpPrintScriptClientTest {
         server.createContext("/validate") { exchange ->
             receivedQuery = exchange.requestURI.query
             receivedBody = exchange.requestBody.readAllBytes().decodeToString()
-            receivedAuthorization = exchange.requestHeaders.getFirst("Authorization")
-            val bytes = response.toByteArray()
-            exchange.responseHeaders.add("Content-Type", contentType)
-            exchange.sendResponseHeaders(status, bytes.size.toLong())
-            exchange.responseBody.use { it.write(bytes) }
+            respond(exchange)
         }
+        server.createContext("/versions") { exchange -> respond(exchange) }
         server.start()
+    }
+
+    private fun respond(exchange: HttpExchange) {
+        receivedAuthorization = exchange.requestHeaders.getFirst("Authorization")
+        val bytes = response.toByteArray()
+        exchange.responseHeaders.add("Content-Type", contentType)
+        // -1 es "sin cuerpo": con 0 el servidor manda la respuesta en chunks
+        exchange.sendResponseHeaders(status, if (bytes.isEmpty()) -1 else bytes.size.toLong())
+        exchange.responseBody.use { it.write(bytes) }
     }
 
     @AfterEach
@@ -195,5 +202,46 @@ class HttpPrintScriptClientTest {
             }
 
         assertEquals(415, exception.statusCode.value())
+    }
+
+    @Test
+    fun `versions devuelve los ids de las versiones`() {
+        response = """{"versions":[{"id":"1.0"},{"id":"1.1"}],"latest":"1.1"}"""
+
+        val result = client().versions()
+
+        assertEquals(VersionsResult.Found(listOf("1.0", "1.1")), result)
+    }
+
+    @Test
+    fun `versions con una lista vacia devuelve Found sin versiones`() {
+        response = """{"versions":[],"latest":"1.1"}"""
+
+        assertEquals(VersionsResult.Found(emptyList()), client().versions())
+    }
+
+    @Test
+    fun `versions manda el token en el header Authorization`() {
+        response = """{"versions":[],"latest":"1.1"}"""
+
+        client().versions()
+
+        assertEquals("Bearer token-de-prueba", receivedAuthorization)
+    }
+
+    @Test
+    fun `versions con un 500 de PrintScript devuelve Failed`() {
+        status = 500
+        contentType = "application/problem+json"
+        response = """{"title":"Internal Server Error","status":500}"""
+
+        assertIs<VersionsResult.Failed>(client().versions())
+    }
+
+    @Test
+    fun `versions con un 200 sin body devuelve Failed`() {
+        response = ""
+
+        assertIs<VersionsResult.Failed>(client().versions())
     }
 }

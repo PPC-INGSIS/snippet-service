@@ -6,6 +6,8 @@ interface PrintScriptClient {
         version: String,
         content: String,
     ): ValidationResult
+
+    fun versions(): VersionsResult
 }
 
 sealed interface ValidationResult {
@@ -18,6 +20,17 @@ sealed interface ValidationResult {
     data class Rejected(
         val message: String,
     ) : ValidationResult
+}
+
+sealed interface VersionsResult {
+    data class Found(
+        val versions: List<String>,
+    ) : VersionsResult
+
+    // PrintScript falló o no contestó
+    data class Failed(
+        val message: String,
+    ) : VersionsResult
 }
 
 data class ValidationError(
