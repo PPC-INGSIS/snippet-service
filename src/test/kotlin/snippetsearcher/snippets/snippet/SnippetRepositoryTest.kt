@@ -23,6 +23,7 @@ class SnippetRepositoryTest(
                 description = "Pide un nombre",
                 language = "printscript",
                 version = "1.1",
+                extension = "prs",
             )
 
         repository.save(snippet)
@@ -46,6 +47,7 @@ class SnippetRepositoryTest(
                     description = "v1",
                     language = "printscript",
                     version = "1.0",
+                    extension = "prs",
                 ),
             )
 

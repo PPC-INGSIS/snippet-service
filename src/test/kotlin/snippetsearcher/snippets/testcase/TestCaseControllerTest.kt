@@ -233,7 +233,7 @@ class TestCaseControllerTest(
     private fun savedSnippet(ownerId: String): UUID {
         val id = UUID.randomUUID()
         asset.put(id, "println(1);")
-        snippets.save(Snippet(id, ownerId, "Saludo", "Pide un nombre", "printscript", "1.1"))
+        snippets.save(Snippet(id, ownerId, "Saludo", "Pide un nombre", "printscript", "1.1", "prs"))
         return id
     }
 }

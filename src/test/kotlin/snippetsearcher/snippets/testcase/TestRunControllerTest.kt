@@ -131,7 +131,7 @@ class TestRunControllerTest(
     @Test
     fun `POST tests run de un snippet sin contenido responde 500`() {
         val id = UUID.randomUUID()
-        repository.save(Snippet(id, "auth0|ana", "Saludo", "Pide un nombre", "printscript", "1.1"))
+        repository.save(Snippet(id, "auth0|ana", "Saludo", "Pide un nombre", "printscript", "1.1", "prs"))
 
         correr(id, "auth0|ana", """{"input":[],"output":[]}""")
             .andExpect { status { isInternalServerError() } }
@@ -186,7 +186,7 @@ class TestRunControllerTest(
     private fun guardar(ownerId: String): UUID {
         val id = UUID.randomUUID()
         asset.put(id, "println(1);")
-        repository.save(Snippet(id, ownerId, "Saludo", "Pide un nombre", "printscript", "1.1"))
+        repository.save(Snippet(id, ownerId, "Saludo", "Pide un nombre", "printscript", "1.1", "prs"))
         return id
     }
 }

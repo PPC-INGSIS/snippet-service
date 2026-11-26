@@ -13,6 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 class Auth0UserDirectoryTest {
     // Un servidor HTTP mínimo que hace de Auth0: da el token y responde la búsqueda
@@ -49,6 +50,39 @@ class Auth0UserDirectoryTest {
         exchange.responseHeaders.add("Content-Type", "application/json")
         exchange.sendResponseHeaders(200, bytes.size.toLong())
         exchange.responseBody.use { it.write(bytes) }
+    }
+
+    @Test
+    fun `namesOf pide todos los ids en una sola consulta, entre comillas`() {
+        usersResponse = """[{"user_id":"auth0|ana","name":"Ana Pérez"},{"user_id":"auth0|beto","name":"Beto"}]"""
+
+        val nombres = directory().namesOf(listOf("auth0|ana", "auth0|beto"))
+
+        assertEquals(mapOf("auth0|ana" to "Ana Pérez", "auth0|beto" to "Beto"), nombres)
+        // Entre comillas porque el | del sub es un operador de Lucene
+        val query = URLDecoder.decode(receivedQuery, "UTF-8")
+        assertTrue("""user_id:("auth0|ana" OR "auth0|beto")""" in query, query)
+    }
+
+    @Test
+    fun `namesOf sin ids no consulta nada`() {
+        receivedQuery = "no-se-llamo"
+
+        assertEquals(emptyMap(), directory().namesOf(emptyList()))
+        assertEquals("no-se-llamo", receivedQuery)
+    }
+
+    /**
+     * Si Auth0 falla, devuelve lo que pudo —nada— en vez de tirar.
+     *
+     * Es la decisión que sostiene el criterio "si el directorio de usuarios falla, el listado
+     * responde 200 igual": un nombre que no se pudo resolver no puede tirar abajo la tabla entera.
+     */
+    @Test
+    fun `namesOf con Auth0 caido devuelve un mapa vacio en vez de tirar`() {
+        server.stop(0)
+
+        assertEquals(emptyMap(), directory().namesOf(listOf("auth0|ana")))
     }
 
     private fun directory(timeout: Duration = Duration.ofSeconds(5)): Auth0UserDirectory {
