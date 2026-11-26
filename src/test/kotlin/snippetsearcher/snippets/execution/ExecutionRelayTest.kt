@@ -324,6 +324,43 @@ class ExecutionRelayTest(
         assertNotNull(browser.cierre())
     }
 
+    /**
+     * Si PrintScript cierra mientras el `start` todavía no volvió, la ejecución igual se cierra.
+     *
+     * Es la carrera que marcó Ignacio en la review: `afterConnectionClosed` saca el relay del mapa
+     * y cierra `relay.execution`, pero durante el `start` ese campo todavía es `null`. Sin el
+     * arreglo, la ejecución queda guardada en un relay que ya no está en ningún lado y nadie la
+     * cierra: se queda ocupando uno de los lugares de PrintScript hasta que se reinicie.
+     */
+    @Test
+    fun `si PrintScript cierra antes de que el start vuelva, la ejecucion no queda abierta`() {
+        executions.closeBeforeReturning = true
+
+        conectar(guardar(ana)).manda("""{"type":"auth","token":"$TOKEN_DE_ANA"}""")
+
+        esperarQueArranque()
+        esperar { executions.closed }
+        assertTrue(executions.closed, "la ejecución quedó abierta contra PrintScript")
+    }
+
+    /**
+     * Una ejecución que se cierra mientras arrancaba igual devuelve el lugar.
+     *
+     * Es la misma carrera que el test de arriba, mirada desde el tope: si la ejecución queda sin
+     * cerrar, `Releasing.close()` no corre nunca y el usuario pierde un lugar **para siempre**.
+     * Tres veces y no puede volver a ejecutar hasta que se reinicie Snippets.
+     */
+    @Test
+    fun `si la ejecucion se cierra mientras arrancaba, el lugar se devuelve igual`() {
+        executions.closeBeforeReturning = true
+
+        conectar(guardar(ana)).manda("""{"type":"auth","token":"$TOKEN_DE_ANA"}""")
+
+        esperarQueArranque()
+        esperar { slots.openFor(ana) == 0 }
+        assertEquals(0, slots.openFor(ana), "el usuario perdió un lugar")
+    }
+
     private val ana = "auth0|ana"
     private val beto = "auth0|beto"
 

@@ -108,7 +108,9 @@ sealed interface StartResult {
      * El usuario ya tiene todas las ejecuciones que puede tener abiertas.
      *
      * Aparte de `Rejected` porque no es lo mismo para quien pide: el pedido estaba bien y va a
-     * funcionar en cuanto cierre una, así que cierra con 1013 ("probá más tarde") y no con 1008.
+     * funcionar en cuanto cierre una. Eso se le dice en el texto y no en el código de cierre: el
+     * 1013 que correspondería no sobrevive al transporte (llega como 1002), así que el handler
+     * cierra con 1008 como el resto de los rechazos y `max` sirve para armar el mensaje.
      */
     data class TooManyExecutions(
         val max: Int,
