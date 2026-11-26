@@ -3,6 +3,7 @@ package snippetsearcher.snippets.printscript
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.MediaType
+import org.springframework.http.client.JdkClientHttpRequestFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.RestClient
@@ -10,21 +11,30 @@ import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
 import snippetsearcher.snippets.security.AccessToken
 import snippetsearcher.snippets.security.BearerTokenInterceptor
+import java.net.http.HttpClient
 import java.nio.charset.StandardCharsets
+import java.time.Duration
 
 @Component
 class HttpPrintScriptClient(
     @Value("\${printscript.url}") baseUrl: String,
+    @Value("\${printscript.connect-timeout}") connectTimeout: Duration,
+    @Value("\${printscript.read-timeout}") readTimeout: Duration,
     accessToken: AccessToken,
 ) : PrintScriptClient {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    // Con timeouts: sin eso, un PrintScript colgado cuelga al thread que llama
     private val restClient =
         RestClient
             .builder()
             .baseUrl(baseUrl)
             .requestInterceptor(BearerTokenInterceptor(accessToken))
-            .build()
+            .requestFactory(
+                JdkClientHttpRequestFactory(
+                    HttpClient.newBuilder().connectTimeout(connectTimeout).build(),
+                ).apply { setReadTimeout(readTimeout) },
+            ).build()
 
     override fun validate(
         version: String,
