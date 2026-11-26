@@ -66,8 +66,18 @@ sealed interface VersionsResult {
     ) : VersionsResult
 }
 
+/**
+ * Un error del código que mandó el usuario, como lo devuelve PrintScript.
+ *
+ * La posición es opcional porque hay errores que no la tienen: PrintScript devuelve `line` y
+ * `column` en `null` cuando el código desborda el parser por tener demasiados niveles de
+ * anidamiento (printscript-service#42), porque ahí no hay una línea que señalar.
+ *
+ * Con `Int` no nulo, esa respuesta no se podía deserializar y el pedido terminaba en un 500 con un
+ * error de Jackson en el log, en vez del 400 con el mensaje que PrintScript sí había mandado.
+ */
 data class ValidationError(
     val message: String,
-    val line: Int,
-    val column: Int,
+    val line: Int?,
+    val column: Int?,
 )
