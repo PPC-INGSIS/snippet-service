@@ -17,6 +17,10 @@ class FakeAssetClient : AssetClient {
     /** Si no es null, put(), get() y delete() fallan con este mensaje en vez de actuar. */
     var failWith: String? = null
 
+    /** Cuántas veces se pidió un contenido, para probar quién llama al asset service y quién no. */
+    var gets = 0
+        private set
+
     override fun put(
         snippetId: UUID,
         content: String,
@@ -28,6 +32,7 @@ class FakeAssetClient : AssetClient {
     }
 
     override fun get(snippetId: UUID): ContentResult {
+        gets++
         failWith?.let { return ContentResult.Failed(it) }
 
         return contents[snippetId]?.let { ContentResult.Found(it) } ?: ContentResult.NotFound
@@ -43,6 +48,7 @@ class FakeAssetClient : AssetClient {
     fun clear() {
         contents.clear()
         failWith = null
+        gets = 0
     }
 
     fun count() = contents.size

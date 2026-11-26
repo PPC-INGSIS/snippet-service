@@ -482,11 +482,154 @@ class SnippetControllerTest(
             }.andExpect { status { isUnauthorized() } }
     }
 
+    @Test
+    fun `GET snippets devuelve la forma que espera la UI`() {
+        val ana = "auth0|lista-forma"
+        saved(ana)
+
+        mockMvc
+            .get("/snippets") {
+                with(jwt().jwt { it.subject(ana) }.authorities(readSnippets))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.page") { value(0) }
+                jsonPath("$.page_size") { value(10) }
+                jsonPath("$.count") { value(1) }
+                jsonPath("$.snippets[0].name") { value("Saludo") }
+                jsonPath("$.snippets[0].language") { value("printscript") }
+            }
+    }
+
+    // El listado no muestra el contenido, así que tampoco lo manda
+    @Test
+    fun `GET snippets no trae el contenido de los snippets`() {
+        val ana = "auth0|lista-sin-contenido"
+        saved(ana)
+
+        mockMvc
+            .get("/snippets") {
+                with(jwt().jwt { it.subject(ana) }.authorities(readSnippets))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.snippets[0].content") { doesNotExist() }
+            }
+    }
+
+    @Test
+    fun `GET snippets no muestra los snippets de otro usuario`() {
+        saved("auth0|lista-ana")
+
+        mockMvc
+            .get("/snippets") {
+                with(jwt().jwt { it.subject("auth0|lista-beto") }.authorities(readSnippets))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.count") { value(0) }
+                jsonPath("$.snippets") { isEmpty() }
+            }
+    }
+
+    // page_size viaja en snake_case porque así lo manda la UI
+    @Test
+    fun `GET snippets corta la pagina en page_size y devuelve el total igual`() {
+        val ana = "auth0|lista-pagina"
+        saved(ana, "Alfa")
+        saved(ana, "Beta")
+
+        mockMvc
+            .get("/snippets?page=0&page_size=1") {
+                with(jwt().jwt { it.subject(ana) }.authorities(readSnippets))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.page_size") { value(1) }
+                jsonPath("$.count") { value(2) }
+                jsonPath("$.snippets.length()") { value(1) }
+                jsonPath("$.snippets[0].name") { value("Alfa") }
+            }
+    }
+
+    @Test
+    fun `GET snippets filtra por snippetName`() {
+        val ana = "auth0|lista-filtro"
+        saved(ana, "Alfa")
+        saved(ana, "Beta")
+
+        mockMvc
+            .get("/snippets?snippetName=bet") {
+                with(jwt().jwt { it.subject(ana) }.authorities(readSnippets))
+            }.andExpect {
+                status { isOk() }
+                jsonPath("$.count") { value(1) }
+                jsonPath("$.snippets[0].name") { value("Beta") }
+            }
+    }
+
+    @Test
+    fun `GET snippets ordenado por un campo que no se puede responde 400`() {
+        mockMvc
+            .get("/snippets?sortBy=ownerId") {
+                with(jwt().jwt { it.subject("auth0|lista-orden") }.authorities(readSnippets))
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.detail") { exists() }
+            }
+    }
+
+    @Test
+    fun `GET snippets con un sentido de orden invalido responde 400`() {
+        mockMvc
+            .get("/snippets?sortDirection=arriba") {
+                with(jwt().jwt { it.subject("auth0|lista-sentido") }.authorities(readSnippets))
+            }.andExpect {
+                status { isBadRequest() }
+            }
+    }
+
+    @Test
+    fun `GET snippets con page_size fuera de rango responde 400`() {
+        mockMvc
+            .get("/snippets?page_size=0") {
+                with(jwt().jwt { it.subject("auth0|lista-tamano") }.authorities(readSnippets))
+            }.andExpect {
+                status { isBadRequest() }
+            }
+
+        mockMvc
+            .get("/snippets?page_size=${SnippetController.MAX_PAGE_SIZE + 1}") {
+                with(jwt().jwt { it.subject("auth0|lista-tamano") }.authorities(readSnippets))
+            }.andExpect {
+                status { isBadRequest() }
+            }
+    }
+
+    @Test
+    fun `GET snippets con page negativa responde 400`() {
+        mockMvc
+            .get("/snippets?page=-1") {
+                with(jwt().jwt { it.subject("auth0|lista-pagina-negativa") }.authorities(readSnippets))
+            }.andExpect {
+                status { isBadRequest() }
+            }
+    }
+
+    @Test
+    fun `GET snippets con un token sin sub responde 401`() {
+        mockMvc
+            .get("/snippets") {
+                with(jwt().jwt { token -> token.claims { it.remove("sub") } }.authorities(readSnippets))
+            }.andExpect {
+                status { isUnauthorized() }
+            }
+    }
+
     // Un snippet ya guardado, con su contenido en el asset service, listo para pedirlo
-    private fun saved(ownerId: String): UUID {
+    private fun saved(
+        ownerId: String,
+        name: String = "Saludo",
+    ): UUID {
         val id = UUID.randomUUID()
         asset.put(id, "println(1);")
-        repository.save(Snippet(id, ownerId, "Saludo", "Pide un nombre", "printscript", "1.1"))
+        repository.save(Snippet(id, ownerId, name, "Pide un nombre", "printscript", "1.1"))
         return id
     }
 

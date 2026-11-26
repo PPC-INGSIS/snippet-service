@@ -1,6 +1,9 @@
 package snippetsearcher.snippets.snippet
 
 import org.slf4j.LoggerFactory
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Sort
+import org.springframework.data.jpa.domain.Specification
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
@@ -64,6 +67,55 @@ class SnippetService(
             }
             is ContentResult.Failed -> FindSnippetResult.ContentUnavailable(content.message)
         }
+    }
+
+    /**
+     * Los snippets de los que el usuario es dueño, paginados, filtrados y ordenados.
+     *
+     * No trae el contenido: el listado muestra nombre, lenguaje y autor, y pedirle el
+     * contenido al asset service sería una llamada por fila para algo que no se ve.
+     *
+     * El dueño no es un filtro más: es la condición que está siempre. Los snippets de otro
+     * no se filtran después, no entran en la consulta.
+     */
+    fun list(
+        ownerId: String,
+        query: SnippetQuery,
+    ): ListSnippetsResult {
+        val sortBy = query.sortBy.filtro()
+        val field =
+            if (sortBy == null) {
+                SnippetSortField.NAME
+            } else {
+                SnippetSortField.from(sortBy) ?: return ListSnippetsResult.SortFieldNotAllowed(sortBy)
+            }
+
+        val sortDirection = query.sortDirection.filtro()
+        val direction =
+            if (sortDirection == null) {
+                Sort.Direction.ASC
+            } else {
+                Sort.Direction
+                    .fromOptionalString(sortDirection)
+                    .orElse(null) ?: return ListSnippetsResult.SortDirectionNotAllowed(sortDirection)
+            }
+
+        // El id como desempate, aunque nadie ordene por id: dos snippets con el mismo nombre
+        // quedarían en el orden que Postgres quiera, y ese orden puede cambiar entre dos
+        // pedidos, así que la UI podría ver una misma fila en dos páginas y nunca ver otra.
+        val sort = Sort.by(direction, field.field).and(Sort.by(Sort.Direction.ASC, "id"))
+
+        val filters =
+            Specification.allOf(
+                listOfNotNull(
+                    SnippetFilters.ownedBy(ownerId),
+                    query.name.filtro()?.let { SnippetFilters.nameContains(it) },
+                    query.language.filtro()?.let { SnippetFilters.writtenIn(it) },
+                ),
+            )
+
+        val pagina = repository.findAll(filters, PageRequest.of(query.page, query.pageSize, sort))
+        return ListSnippetsResult.Listed(pagina.content, pagina.totalElements)
     }
 
     /**
@@ -192,6 +244,10 @@ class SnippetService(
         return CreateSnippetResult.Created(repository.save(snippet))
     }
 }
+
+// Un parámetro en blanco es lo mismo que no mandarlo: la UI manda el campo de búsqueda
+// vacío mientras el usuario no escribió nada
+private fun String?.filtro(): String? = this?.trim()?.takeIf { it.isNotEmpty() }
 
 // Lo que manda el usuario para crear un snippet. El dueño va aparte porque no lo elige él: sale del token
 data class NewSnippet(
