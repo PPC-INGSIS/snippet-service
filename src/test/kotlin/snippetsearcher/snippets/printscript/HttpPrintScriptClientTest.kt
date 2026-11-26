@@ -214,6 +214,13 @@ class HttpPrintScriptClientTest {
     }
 
     @Test
+    fun `versions con una lista vacia devuelve Found sin versiones`() {
+        response = """{"versions":[],"latest":"1.1"}"""
+
+        assertEquals(VersionsResult.Found(emptyList()), client().versions())
+    }
+
+    @Test
     fun `versions manda el token en el header Authorization`() {
         response = """{"versions":[],"latest":"1.1"}"""
 
