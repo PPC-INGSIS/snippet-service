@@ -238,6 +238,25 @@ class ExecutionRelayTest(
         assertTrue(executions.inputs.isEmpty())
     }
 
+    /**
+     * Si PrintScript cierra mientras el `start` todavía no volvió, la ejecución igual se cierra.
+     *
+     * Es la carrera que marcó Ignacio en la review: `afterConnectionClosed` saca el relay del mapa
+     * y cierra `relay.execution`, pero durante el `start` ese campo todavía es `null`. Sin el
+     * arreglo, la ejecución queda guardada en un relay que ya no está en ningún lado y nadie la
+     * cierra: se queda ocupando uno de los lugares de PrintScript hasta que se reinicie.
+     */
+    @Test
+    fun `si PrintScript cierra antes de que el start vuelva, la ejecucion no queda abierta`() {
+        executions.closeBeforeReturning = true
+
+        conectar(guardar(ana)).manda("""{"type":"auth","token":"$TOKEN_DE_ANA"}""")
+
+        esperarQueArranque()
+        esperar { executions.closed }
+        assertTrue(executions.closed, "la ejecución quedó abierta contra PrintScript")
+    }
+
     private val ana = "auth0|ana"
 
     private fun guardar(ownerId: String): UUID {

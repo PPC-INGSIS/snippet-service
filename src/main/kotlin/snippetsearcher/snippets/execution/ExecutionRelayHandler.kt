@@ -1,5 +1,6 @@
 package snippetsearcher.snippets.execution
 
+import jakarta.annotation.PreDestroy
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
@@ -74,6 +75,12 @@ class ExecutionRelayHandler(
         }
     }
 
+    // El scheduler es nuestro, así que se apaga con la app: si no, su thread queda vivo
+    @PreDestroy
+    fun apagarLosTimeouts() {
+        timeouts.shutdownNow()
+    }
+
     override fun afterConnectionClosed(
         session: WebSocketSession,
         status: CloseStatus,
@@ -90,6 +97,11 @@ class ExecutionRelayHandler(
         relay: Relay,
         token: String,
     ) {
+        // Acá se cancela y no al final: el auth ya llegó, así que el timeout no tiene más nada que
+        // hacer. Si esperara a que el start vuelva, podría dispararse en el medio, ver la ejecución
+        // todavía en null y cerrar una conexión que estaba arrancando bien
+        relay.authTimeout?.cancel(false)
+
         val snippetId = snippetIdDe(session) ?: return reject(session, "La URL no trae un id de snippet válido")
 
         val started =
@@ -105,7 +117,19 @@ class ExecutionRelayHandler(
             is StartResult.Rejected -> reject(session, started.detail)
             is StartResult.Started -> {
                 relay.execution = started.execution
-                relay.authTimeout?.cancel(false)
+                /*
+                 * Arrancar tarda: `find` puede preguntarle a Permisos y después se abre el
+                 * WebSocket con PrintScript. En ese rato el browser puede cerrar, o PrintScript
+                 * puede terminar un snippet corto y cerrar.
+                 *
+                 * Cuando eso pasa, `afterConnectionClosed` ya sacó el relay del mapa y buscó la
+                 * ejecución para cerrarla, pero todavía era null. Publicarla y recién después
+                 * mirar si el relay sigue en el mapa cierra el agujero: o la vio y la cerró, o
+                 * acá se ve que ya no está y se cierra. En el peor caso se cierra dos veces, que
+                 * es inofensivo. Sin esto, la ejecución queda ocupando un lugar de PrintScript
+                 * hasta que se reinicie.
+                 */
+                if (relays[session.id] !== relay) started.execution.close()
             }
         }
     }

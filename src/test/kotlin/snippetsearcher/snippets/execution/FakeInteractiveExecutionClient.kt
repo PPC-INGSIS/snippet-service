@@ -19,6 +19,15 @@ class FakeInteractiveExecutionClient : InteractiveExecutionClient {
     /** Si no es null, start() devuelve Failed con esto: para probar qué pasa cuando PrintScript no está. */
     var failWith: String? = null
 
+    /**
+     * Si es true, start() avisa que PrintScript cerró **antes de devolver** la ejecución.
+     *
+     * Reproduce sin depender del timing una carrera real: un snippet corto (`println(1);`) puede
+     * terminar y cerrar mientras el start todavía no volvió. Sin el flag habría que acertar una
+     * ventana de milisegundos.
+     */
+    var closeBeforeReturning = false
+
     @Volatile
     var closed = false
         private set
@@ -36,6 +45,8 @@ class FakeInteractiveExecutionClient : InteractiveExecutionClient {
         starts += request
         this.onMessage = onMessage
         this.onClose = onClose
+
+        if (closeBeforeReturning) onClose()
 
         return StartExecutionResult.Started(
             object : InteractiveExecution {
@@ -60,6 +71,7 @@ class FakeInteractiveExecutionClient : InteractiveExecutionClient {
         starts.clear()
         inputs.clear()
         failWith = null
+        closeBeforeReturning = false
         closed = false
         onMessage = null
         onClose = null
