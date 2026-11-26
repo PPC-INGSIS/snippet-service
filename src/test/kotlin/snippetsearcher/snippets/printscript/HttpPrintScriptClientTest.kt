@@ -1,11 +1,18 @@
 package snippetsearcher.snippets.printscript
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 import org.springframework.web.client.HttpClientErrorException
+import org.springframework.web.client.HttpServerErrorException
+import org.springframework.web.client.ResourceAccessException
 import snippetsearcher.snippets.security.AccessToken
 import java.net.InetSocketAddress
 import kotlin.test.assertEquals
@@ -243,5 +250,54 @@ class HttpPrintScriptClientTest {
         response = ""
 
         assertIs<VersionsResult.Failed>(client().versions())
+    }
+
+    // Los warn que deja el cliente mientras corre el bloque: así se prueba que la falla queda en el log
+    private fun warnsDuring(block: () -> Unit): List<ILoggingEvent> {
+        val logger = LoggerFactory.getLogger(HttpPrintScriptClient::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        logger.addAppender(appender)
+        try {
+            block()
+        } finally {
+            logger.detachAppender(appender)
+        }
+        return appender.list.filter { it.level == Level.WARN }
+    }
+
+    @Test
+    fun `un 500 de PrintScript se loguea y sigue saliendo como excepcion`() {
+        status = 500
+        response = ""
+
+        val warns =
+            warnsDuring {
+                assertFailsWith<HttpServerErrorException> { client().validate("1.1", "println(1);") }
+            }
+
+        assertEquals("No se pudo validar el snippet en PrintScript", warns.single().formattedMessage)
+    }
+
+    @Test
+    fun `PrintScript caido se loguea y sigue saliendo como excepcion`() {
+        server.stop(0)
+
+        val warns =
+            warnsDuring {
+                assertFailsWith<ResourceAccessException> { client().validate("1.1", "println(1);") }
+            }
+
+        assertEquals("No se pudo validar el snippet en PrintScript", warns.single().formattedMessage)
+    }
+
+    @Test
+    fun `un rechazo de PrintScript no se loguea como falla`() {
+        status = 400
+        response = """{"detail":"La versión '9.9' no existe"}"""
+        contentType = "application/problem+json"
+
+        val warns = warnsDuring { client().validate("9.9", "println(1);") }
+
+        assertTrue(warns.isEmpty())
     }
 }
