@@ -36,6 +36,9 @@ dependencies {
     }
     implementation("org.springframework.boot:spring-boot-starter-data-redis-reactive")
 
+    // El relay de la ejecución interactiva: WebSocket con el browser de un lado y con PrintScript del otro
+    implementation("org.springframework.boot:spring-boot-starter-websocket")
+
     testImplementation("org.testcontainers:testcontainers")
 
     newRelicAgent("com.newrelic.agent.java:newrelic-agent:$newRelicVersion")
