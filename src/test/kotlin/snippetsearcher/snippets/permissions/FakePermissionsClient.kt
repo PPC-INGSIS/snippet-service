@@ -7,7 +7,7 @@ import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Reemplazo de Permisos para los tests: guarda los dueños en memoria.
+ * Reemplazo de Permisos para los tests: guarda los accesos en memoria.
  *
  * Con `failWith` se le pide que falle, para probar qué pasa cuando Permisos no responde.
  */
@@ -15,7 +15,7 @@ class FakePermissionsClient : PermissionsClient {
     // snippetId -> (userId -> rol)
     private val accesos = ConcurrentHashMap<UUID, MutableMap<String, String>>()
 
-    /** Si no es null, registerOwner falla con este mensaje en vez de registrar. */
+    /** Si no es null, registerOwner, registerReader y deleteAccesses fallan con este mensaje en vez de actuar. */
     var failWith: String? = null
 
     override fun registerOwner(
@@ -35,9 +35,17 @@ class FakePermissionsClient : PermissionsClient {
     ): RegisterAccessResult {
         failWith?.let { return RegisterAccessResult.Failed(it) }
 
-        // Igual que Permisos: la clave es (snippet, usuario), asi que no se duplica
-        accesos.computeIfAbsent(snippetId) { ConcurrentHashMap() }[userId] = rol
+        // Igual que Permisos: la clave es (snippet, usuario) y, si ya existe, responde 409 y no toca
+        // el rol. Por eso putIfAbsent: si el dueño comparte consigo mismo, sigue siendo OWNER
+        accesos.computeIfAbsent(snippetId) { ConcurrentHashMap() }.putIfAbsent(userId, rol)
         return RegisterAccessResult.Registered
+    }
+
+    override fun deleteAccesses(snippetId: UUID): DeleteAccessesResult {
+        failWith?.let { return DeleteAccessesResult.Failed(it) }
+
+        accesos.remove(snippetId)
+        return DeleteAccessesResult.Deleted
     }
 
     fun ownerOf(snippetId: UUID): String? = accesos[snippetId]?.entries?.firstOrNull { it.value == "OWNER" }?.key

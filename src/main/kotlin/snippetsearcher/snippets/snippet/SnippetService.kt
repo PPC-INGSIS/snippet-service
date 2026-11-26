@@ -1,10 +1,17 @@
 package snippetsearcher.snippets.snippet
 
 import org.slf4j.LoggerFactory
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Sort
+import org.springframework.data.jpa.domain.Specification
 import org.springframework.stereotype.Service
+import org.springframework.transaction.PlatformTransactionManager
+import org.springframework.transaction.support.TransactionTemplate
 import snippetsearcher.snippets.asset.AssetClient
 import snippetsearcher.snippets.asset.ContentResult
+import snippetsearcher.snippets.asset.DeleteContentResult
 import snippetsearcher.snippets.asset.SaveContentResult
+import snippetsearcher.snippets.permissions.DeleteAccessesResult
 import snippetsearcher.snippets.permissions.PermissionsClient
 import snippetsearcher.snippets.permissions.RegisterAccessResult
 import snippetsearcher.snippets.printscript.PrintScriptClient
@@ -17,17 +24,27 @@ class SnippetService(
     private val printScriptClient: PrintScriptClient,
     private val assetClient: AssetClient,
     private val permissionsClient: PermissionsClient,
+    transactionManager: PlatformTransactionManager,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    // Programática y no con @Transactional: acá hay que decidir el rollback según un resultado,
+    // y @Transactional solo revierte si sale una excepción
+    private val transactions = TransactionTemplate(transactionManager)
 
     fun create(
         ownerId: String,
         newSnippet: NewSnippet,
     ): CreateSnippetResult =
         when (val validation = printScriptClient.validate(newSnippet.version, newSnippet.content)) {
-            is ValidationResult.Rejected -> CreateSnippetResult.Rejected(validation.message)
+            // El quién y el trace id no van acá: los pone el MDC en cada línea
+            is ValidationResult.Rejected -> {
+                log.info("PrintScript rechazó el pedido: {}", validation.message)
+                CreateSnippetResult.Rejected(validation.message)
+            }
             is ValidationResult.Checked ->
                 if (validation.errors.isNotEmpty()) {
+                    log.info("Snippet con {} errores de código, no se crea", validation.errors.size)
                     CreateSnippetResult.Invalid(validation.errors)
                 } else {
                     store(ownerId, newSnippet)
@@ -43,7 +60,12 @@ class SnippetService(
         ownerId: String,
         id: UUID,
     ): FindSnippetResult {
-        val snippet = repository.findByIdAndOwnerId(id, ownerId) ?: return FindSnippetResult.NotFound
+        val snippet =
+            repository.findByIdAndOwnerId(id, ownerId) ?: run {
+                // Resultado de la consulta, no un error: puede no existir o ser de otro
+                log.info("No se encontró el snippet {} para este usuario", id)
+                return FindSnippetResult.NotFound
+            }
 
         return when (val content = assetClient.get(id)) {
             is ContentResult.Found -> FindSnippetResult.Found(snippet, content.content)
@@ -92,6 +114,142 @@ class SnippetService(
     }
 
     /**
+     * Los snippets de los que el usuario es dueño, paginados, filtrados y ordenados.
+     *
+     * No trae el contenido: el listado muestra nombre, lenguaje y autor, y pedirle el
+     * contenido al asset service sería una llamada por fila para algo que no se ve.
+     *
+     * El dueño no es un filtro más: es la condición que está siempre. Los snippets de otro
+     * no se filtran después, no entran en la consulta.
+     */
+    fun list(
+        ownerId: String,
+        query: SnippetQuery,
+    ): ListSnippetsResult {
+        val sortBy = query.sortBy.filtro()
+        val field =
+            if (sortBy == null) {
+                SnippetSortField.NAME
+            } else {
+                SnippetSortField.from(sortBy) ?: return ListSnippetsResult.SortFieldNotAllowed(sortBy)
+            }
+
+        val sortDirection = query.sortDirection.filtro()
+        val direction =
+            if (sortDirection == null) {
+                Sort.Direction.ASC
+            } else {
+                Sort.Direction
+                    .fromOptionalString(sortDirection)
+                    .orElse(null) ?: return ListSnippetsResult.SortDirectionNotAllowed(sortDirection)
+            }
+
+        // El id como desempate, aunque nadie ordene por id: dos snippets con el mismo nombre
+        // quedarían en el orden que Postgres quiera, y ese orden puede cambiar entre dos
+        // pedidos, así que la UI podría ver una misma fila en dos páginas y nunca ver otra.
+        val sort = Sort.by(direction, field.field).and(Sort.by(Sort.Direction.ASC, "id"))
+
+        val filters =
+            Specification.allOf(
+                listOfNotNull(
+                    SnippetFilters.ownedBy(ownerId),
+                    query.name.filtro()?.let { SnippetFilters.nameContains(it) },
+                    query.language.filtro()?.let { SnippetFilters.writtenIn(it) },
+                ),
+            )
+
+        val pagina = repository.findAll(filters, PageRequest.of(query.page, query.pageSize, sort))
+        return ListSnippetsResult.Listed(pagina.content, pagina.totalElements)
+    }
+
+    /**
+     * Reemplaza todos los datos del snippet del dueño y su contenido.
+     *
+     * Primero el dueño: a quien no lo es no hay que revisarle el código ni molestar a PrintScript.
+     * La validación va antes y fuera de la transacción, para no retener una conexión de la base
+     * mientras se espera a PrintScript.
+     */
+    fun update(
+        ownerId: String,
+        id: UUID,
+        changes: NewSnippet,
+    ): UpdateSnippetResult {
+        if (repository.findByIdAndOwnerId(id, ownerId) == null) return UpdateSnippetResult.NotFound
+
+        return when (val validation = printScriptClient.validate(changes.version, changes.content)) {
+            is ValidationResult.Rejected -> UpdateSnippetResult.Rejected(validation.message)
+            is ValidationResult.Checked ->
+                if (validation.errors.isNotEmpty()) {
+                    UpdateSnippetResult.Invalid(validation.errors)
+                } else {
+                    replace(ownerId, id, changes)
+                }
+        }
+    }
+
+    /**
+     * La fila se actualiza y se manda a la base (flush) **antes** de guardar el contenido, y el commit
+     * viene al final. Si la base rechaza algo (un dato demasiado largo, por ejemplo), falla antes de
+     * tocar el asset service. Si falla el asset service, se revierte la fila: nunca quedan datos nuevos
+     * con contenido viejo. Lo único que puede salir mal es el commit mismo, ya con el contenido guardado.
+     */
+    private fun replace(
+        ownerId: String,
+        id: UUID,
+        changes: NewSnippet,
+    ): UpdateSnippetResult =
+        checkNotNull(
+            transactions.execute<UpdateSnippetResult> { status ->
+                val snippet = repository.findByIdAndOwnerId(id, ownerId)
+                if (snippet == null) {
+                    // Pudo borrarse mientras se validaba el código
+                    UpdateSnippetResult.NotFound
+                } else {
+                    snippet.name = changes.name
+                    snippet.description = changes.description
+                    snippet.language = changes.language
+                    snippet.version = changes.version
+                    repository.saveAndFlush(snippet)
+
+                    when (val saved = assetClient.put(id, changes.content)) {
+                        is SaveContentResult.Failed -> {
+                            status.setRollbackOnly()
+                            UpdateSnippetResult.ContentNotSaved(saved.message)
+                        }
+                        is SaveContentResult.Saved -> UpdateSnippetResult.Updated(snippet)
+                    }
+                }
+            },
+        )
+
+    /**
+     * Borra el snippet del dueño: la fila, el contenido y los accesos.
+     *
+     * Al revés que al crear: primero la fila, que es lo que hace visible al snippet. Con la fila
+     * borrada ya nadie lo ve ni lo puede pedir. Si después falla el asset service o Permisos, lo
+     * único que queda son datos huérfanos que nadie alcanza. Se avisa en el log y la respuesta es
+     * de éxito: el usuario pidió que desaparezca y desapareció, y reintentar no arregla nada,
+     * porque el snippet ya no existe para él.
+     */
+    fun delete(
+        ownerId: String,
+        id: UUID,
+    ): DeleteSnippetResult {
+        val snippet = repository.findByIdAndOwnerId(id, ownerId) ?: return DeleteSnippetResult.NotFound
+
+        repository.delete(snippet)
+
+        if (assetClient.delete(id) is DeleteContentResult.Failed) {
+            log.warn("Se borró el snippet {} pero quedó su contenido en el asset service", id)
+        }
+        if (permissionsClient.deleteAccesses(id) is DeleteAccessesResult.Failed) {
+            log.warn("Se borró el snippet {} pero quedaron sus accesos en Permisos", id)
+        }
+
+        return DeleteSnippetResult.Deleted
+    }
+
+    /**
      * Contenido, dueño y recién al final la fila.
      *
      * **Lo que hace visible al snippet es la fila en Postgres**: todo lo que se escriba
@@ -109,12 +267,19 @@ class SnippetService(
         val id = UUID.randomUUID()
 
         when (val saved = assetClient.put(id, newSnippet.content)) {
-            is SaveContentResult.Failed -> return CreateSnippetResult.ContentNotSaved(saved.message)
+            is SaveContentResult.Failed -> {
+                log.warn("No se creó el snippet {}: el asset service no guardó el contenido", id)
+                return CreateSnippetResult.ContentNotSaved(saved.message)
+            }
             is SaveContentResult.Saved -> Unit
         }
 
         when (val registered = permissionsClient.registerOwner(id, ownerId)) {
-            is RegisterAccessResult.Failed -> return CreateSnippetResult.OwnerNotRegistered(registered.message)
+            is RegisterAccessResult.Failed -> {
+                // El contenido ya quedó escrito: queda huérfano en el bucket
+                log.warn("No se creó el snippet {}: Permisos no registró al dueño. Queda contenido huérfano", id)
+                return CreateSnippetResult.OwnerNotRegistered(registered.message)
+            }
             is RegisterAccessResult.Registered -> Unit
         }
 
@@ -127,9 +292,16 @@ class SnippetService(
                 language = newSnippet.language,
                 version = newSnippet.version,
             )
-        return CreateSnippetResult.Created(repository.save(snippet))
+        val guardado = repository.save(snippet)
+        // Cambio de estado: se creó algo. El "quién" sale del MDC
+        log.info("Snippet creado: id={} lenguaje={} version={}", guardado.id, guardado.language, guardado.version)
+        return CreateSnippetResult.Created(guardado)
     }
 }
+
+// Un parámetro en blanco es lo mismo que no mandarlo: la UI manda el campo de búsqueda
+// vacío mientras el usuario no escribió nada
+private fun String?.filtro(): String? = this?.trim()?.takeIf { it.isNotEmpty() }
 
 // Lo que manda el usuario para crear un snippet. El dueño va aparte porque no lo elige él: sale del token
 data class NewSnippet(

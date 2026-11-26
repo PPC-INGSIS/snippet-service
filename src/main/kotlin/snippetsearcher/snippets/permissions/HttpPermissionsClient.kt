@@ -63,14 +63,29 @@ class HttpPermissionsClient(
 
             RegisterAccessResult.Registered
         } catch (ignored: HttpClientErrorException.Conflict) {
-            // 409 es "ya estaba registrado". Para nosotros el resultado es el mismo que
-            // haberlo creado: el dueño quedó. Así un reintento no falla por el primero.
+            // 409 es "ese usuario ya tiene un rol sobre ese snippet". Para nosotros el resultado
+            // es el mismo que haberlo creado: el acceso quedó. Así un reintento no falla por el primero.
             RegisterAccessResult.Registered
         } catch (exception: RestClientException) {
             // El detalle va al log y no a la respuesta: el mensaje de la excepción suele
             // traer la URL y el puerto internos.
             log.warn("No se pudo registrar el acceso {} al snippet {} en Permisos", role, snippetId, exception)
             RegisterAccessResult.Failed(FAILED_MESSAGE)
+        }
+
+    override fun deleteAccesses(snippetId: UUID): DeleteAccessesResult =
+        try {
+            // Permisos responde 204 aunque no hubiera accesos, así que no hay un 404 que distinguir
+            restClient
+                .delete()
+                .uri("/permissions/{snippetId}", snippetId)
+                .retrieve()
+                .toBodilessEntity()
+
+            DeleteAccessesResult.Deleted
+        } catch (exception: RestClientException) {
+            log.warn("No se pudieron borrar los accesos del snippet {} en Permisos", snippetId, exception)
+            DeleteAccessesResult.Failed(FAILED_MESSAGE)
         }
 
     companion object {

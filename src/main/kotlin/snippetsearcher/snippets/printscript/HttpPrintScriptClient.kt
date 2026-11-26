@@ -1,5 +1,6 @@
 package snippetsearcher.snippets.printscript
 
+import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
@@ -16,6 +17,8 @@ class HttpPrintScriptClient(
     @Value("\${printscript.url}") baseUrl: String,
     accessToken: AccessToken,
 ) : PrintScriptClient {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     private val restClient =
         RestClient
             .builder()
@@ -40,8 +43,39 @@ class HttpPrintScriptClient(
             ValidationResult.Checked(response?.errors.orEmpty())
         } catch (exception: HttpClientErrorException) {
             // RestClient convierte los 4xx en excepciones; los rechazos de PrintScript vuelven a ser resultados
-            if (exception.statusCode.value() !in REJECTED_STATUSES) throw exception
+            if (exception.statusCode.value() !in REJECTED_STATUSES) {
+                log.warn(VALIDATE_FAILED_LOG, exception)
+                throw exception
+            }
             ValidationResult.Rejected(rejectionDetail(exception) ?: DEFAULT_REJECTION)
+        } catch (exception: RestClientException) {
+            // Un 5xx, un timeout o PrintScript caído. Se loguea acá y no se deja para Tomcat: cuando Tomcat
+            // la loguea, los filtros ya limpiaron el MDC y la línea sale sin trace.id ni user.id
+            log.warn(VALIDATE_FAILED_LOG, exception)
+            throw exception
+        }
+
+    override fun versions(): VersionsResult =
+        try {
+            val versions =
+                restClient
+                    .get()
+                    .uri("/versions")
+                    .retrieve()
+                    .body<VersionsResponse>()
+                    ?.versions
+                    ?.map { it.id }
+
+            if (versions != null) {
+                VersionsResult.Found(versions)
+            } else {
+                log.warn("PrintScript respondió GET /versions sin body")
+                VersionsResult.Failed(VERSIONS_FAILED)
+            }
+        } catch (exception: RestClientException) {
+            // El detalle va al log y no al resultado: el mensaje de la excepción trae la URL y el puerto internos
+            log.warn("No se pudieron obtener las versiones de PrintScript", exception)
+            VersionsResult.Failed(VERSIONS_FAILED)
         }
 
     private fun rejectionDetail(exception: HttpClientErrorException): String? =
@@ -65,12 +99,25 @@ class HttpPrintScriptClient(
         private val REJECTED_STATUSES = setOf(BAD_REQUEST, CONTENT_TOO_LARGE)
 
         private const val DEFAULT_REJECTION = "PrintScript rechazó el pedido"
+
+        private const val VERSIONS_FAILED = "PrintScript no respondió"
+
+        private const val VALIDATE_FAILED_LOG = "No se pudo validar el snippet en PrintScript"
     }
 }
 
 // Respuesta 200 de printscript-service
 data class ValidationResponse(
     val errors: List<ValidationError>,
+)
+
+// Respuesta de GET /versions de printscript-service. Se ignora latest: no lo usamos
+data class VersionsResponse(
+    val versions: List<VersionResponse>,
+)
+
+data class VersionResponse(
+    val id: String,
 )
 
 // Respuesta 400 o 413 de printscript-service, en formato Problem Details (RFC 9457)

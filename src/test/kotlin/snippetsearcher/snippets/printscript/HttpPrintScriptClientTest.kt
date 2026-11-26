@@ -1,10 +1,18 @@
 package snippetsearcher.snippets.printscript
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
+import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 import org.springframework.web.client.HttpClientErrorException
+import org.springframework.web.client.HttpServerErrorException
+import org.springframework.web.client.ResourceAccessException
 import snippetsearcher.snippets.security.AccessToken
 import java.net.InetSocketAddress
 import kotlin.test.assertEquals
@@ -27,13 +35,19 @@ class HttpPrintScriptClientTest {
         server.createContext("/validate") { exchange ->
             receivedQuery = exchange.requestURI.query
             receivedBody = exchange.requestBody.readAllBytes().decodeToString()
-            receivedAuthorization = exchange.requestHeaders.getFirst("Authorization")
-            val bytes = response.toByteArray()
-            exchange.responseHeaders.add("Content-Type", contentType)
-            exchange.sendResponseHeaders(status, bytes.size.toLong())
-            exchange.responseBody.use { it.write(bytes) }
+            respond(exchange)
         }
+        server.createContext("/versions") { exchange -> respond(exchange) }
         server.start()
+    }
+
+    private fun respond(exchange: HttpExchange) {
+        receivedAuthorization = exchange.requestHeaders.getFirst("Authorization")
+        val bytes = response.toByteArray()
+        exchange.responseHeaders.add("Content-Type", contentType)
+        // -1 es "sin cuerpo": con 0 el servidor manda la respuesta en chunks
+        exchange.sendResponseHeaders(status, if (bytes.isEmpty()) -1 else bytes.size.toLong())
+        exchange.responseBody.use { it.write(bytes) }
     }
 
     @AfterEach
@@ -195,5 +209,95 @@ class HttpPrintScriptClientTest {
             }
 
         assertEquals(415, exception.statusCode.value())
+    }
+
+    @Test
+    fun `versions devuelve los ids de las versiones`() {
+        response = """{"versions":[{"id":"1.0"},{"id":"1.1"}],"latest":"1.1"}"""
+
+        val result = client().versions()
+
+        assertEquals(VersionsResult.Found(listOf("1.0", "1.1")), result)
+    }
+
+    @Test
+    fun `versions con una lista vacia devuelve Found sin versiones`() {
+        response = """{"versions":[],"latest":"1.1"}"""
+
+        assertEquals(VersionsResult.Found(emptyList()), client().versions())
+    }
+
+    @Test
+    fun `versions manda el token en el header Authorization`() {
+        response = """{"versions":[],"latest":"1.1"}"""
+
+        client().versions()
+
+        assertEquals("Bearer token-de-prueba", receivedAuthorization)
+    }
+
+    @Test
+    fun `versions con un 500 de PrintScript devuelve Failed`() {
+        status = 500
+        contentType = "application/problem+json"
+        response = """{"title":"Internal Server Error","status":500}"""
+
+        assertIs<VersionsResult.Failed>(client().versions())
+    }
+
+    @Test
+    fun `versions con un 200 sin body devuelve Failed`() {
+        response = ""
+
+        assertIs<VersionsResult.Failed>(client().versions())
+    }
+
+    // Los warn que deja el cliente mientras corre el bloque: así se prueba que la falla queda en el log
+    private fun warnsDuring(block: () -> Unit): List<ILoggingEvent> {
+        val logger = LoggerFactory.getLogger(HttpPrintScriptClient::class.java) as Logger
+        val appender = ListAppender<ILoggingEvent>().apply { start() }
+        logger.addAppender(appender)
+        try {
+            block()
+        } finally {
+            logger.detachAppender(appender)
+        }
+        return appender.list.filter { it.level == Level.WARN }
+    }
+
+    @Test
+    fun `un 500 de PrintScript se loguea y sigue saliendo como excepcion`() {
+        status = 500
+        response = ""
+
+        val warns =
+            warnsDuring {
+                assertFailsWith<HttpServerErrorException> { client().validate("1.1", "println(1);") }
+            }
+
+        assertEquals("No se pudo validar el snippet en PrintScript", warns.single().formattedMessage)
+    }
+
+    @Test
+    fun `PrintScript caido se loguea y sigue saliendo como excepcion`() {
+        server.stop(0)
+
+        val warns =
+            warnsDuring {
+                assertFailsWith<ResourceAccessException> { client().validate("1.1", "println(1);") }
+            }
+
+        assertEquals("No se pudo validar el snippet en PrintScript", warns.single().formattedMessage)
+    }
+
+    @Test
+    fun `un rechazo de PrintScript no se loguea como falla`() {
+        status = 400
+        response = """{"detail":"La versión '9.9' no existe"}"""
+        contentType = "application/problem+json"
+
+        val warns = warnsDuring { client().validate("9.9", "println(1);") }
+
+        assertTrue(warns.isEmpty())
     }
 }
