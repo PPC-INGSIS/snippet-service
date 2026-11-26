@@ -15,6 +15,7 @@ import org.springframework.web.client.HttpServerErrorException
 import org.springframework.web.client.ResourceAccessException
 import snippetsearcher.snippets.security.AccessToken
 import java.net.InetSocketAddress
+import java.time.Duration
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
@@ -26,6 +27,7 @@ class HttpPrintScriptClientTest {
     private var status = 200
     private var response = """{"errors":[]}"""
     private var contentType = "application/json"
+    private var delay: Duration = Duration.ZERO
     private var receivedQuery = ""
     private var receivedBody = ""
     private var receivedAuthorization: String? = null
@@ -43,6 +45,7 @@ class HttpPrintScriptClientTest {
 
     private fun respond(exchange: HttpExchange) {
         receivedAuthorization = exchange.requestHeaders.getFirst("Authorization")
+        if (!delay.isZero) Thread.sleep(delay.toMillis())
         val bytes = response.toByteArray()
         exchange.responseHeaders.add("Content-Type", contentType)
         // -1 es "sin cuerpo": con 0 el servidor manda la respuesta en chunks
@@ -55,8 +58,13 @@ class HttpPrintScriptClientTest {
         server.stop(0)
     }
 
-    private fun client() =
-        HttpPrintScriptClient("http://localhost:${server.address.port}", AccessToken { "token-de-prueba" })
+    private fun client(readTimeout: Duration = READ_TIMEOUT) =
+        HttpPrintScriptClient(
+            "http://localhost:${server.address.port}",
+            CONNECT_TIMEOUT,
+            readTimeout,
+            AccessToken { "token-de-prueba" },
+        )
 
     @Test
     fun `manda la version y el codigo, y sin errores devuelve lista vacia`() {
@@ -299,5 +307,26 @@ class HttpPrintScriptClientTest {
         val warns = warnsDuring { client().validate("9.9", "println(1);") }
 
         assertTrue(warns.isEmpty())
+    }
+
+    // Un PrintScript que atiende y no contesta no puede colgar al thread que llama
+    @Test
+    fun `versions con un PrintScript lento corta por read timeout y devuelve Failed`() {
+        response = """{"versions":[{"id":"1.1"}],"latest":"1.1"}"""
+        delay = Duration.ofSeconds(1)
+
+        assertIs<VersionsResult.Failed>(client(Duration.ofMillis(200)).versions())
+    }
+
+    @Test
+    fun `validate con un PrintScript lento corta por read timeout y sale como excepcion`() {
+        delay = Duration.ofSeconds(1)
+
+        assertFailsWith<ResourceAccessException> { client(Duration.ofMillis(200)).validate("1.1", "println(1);") }
+    }
+
+    companion object {
+        private val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(2)
+        private val READ_TIMEOUT: Duration = Duration.ofSeconds(5)
     }
 }
