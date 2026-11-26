@@ -11,6 +11,7 @@ import org.springframework.http.MediaType
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.put
@@ -414,6 +415,71 @@ class SnippetControllerTest(
             }.andExpect {
                 status { isUnauthorized() }
             }
+    }
+
+    @Test
+    fun `DELETE snippets por id del dueno responde 204 y despues el GET responde 404`() {
+        val id = saved("auth0|ana")
+
+        mockMvc
+            .delete("/snippets/$id") { with(jwt().jwt { it.subject("auth0|ana") }.authorities(writeSnippets)) }
+            .andExpect { status { isNoContent() } }
+
+        mockMvc
+            .get("/snippets/$id") { with(jwt().jwt { it.subject("auth0|ana") }.authorities(readSnippets)) }
+            .andExpect { status { isNotFound() } }
+        assertEquals(0, asset.count())
+    }
+
+    @Test
+    fun `DELETE snippets por id de otro usuario responde 404 y no borra nada`() {
+        val id = saved("auth0|ana")
+
+        mockMvc
+            .delete("/snippets/$id") { with(jwt().jwt { it.subject("auth0|beto") }.authorities(writeSnippets)) }
+            .andExpect { status { isNotFound() } }
+
+        assertEquals(true, repository.existsById(id))
+        assertEquals(1, asset.count())
+    }
+
+    @Test
+    fun `DELETE snippets por id inexistente responde 404`() {
+        mockMvc
+            .delete("/snippets/${UUID.randomUUID()}") {
+                with(jwt().jwt { it.subject("auth0|ana") }.authorities(writeSnippets))
+            }.andExpect { status { isNotFound() } }
+    }
+
+    @Test
+    fun `DELETE snippets con el asset service caido responde 204 igual`() {
+        val id = saved("auth0|ana")
+        asset.failWith = "connection refused"
+
+        mockMvc
+            .delete("/snippets/$id") { with(jwt().jwt { it.subject("auth0|ana") }.authorities(writeSnippets)) }
+            .andExpect { status { isNoContent() } }
+
+        assertEquals(false, repository.existsById(id))
+    }
+
+    @Test
+    fun `DELETE snippets con solo read_snippets responde 403 y no borra nada`() {
+        val id = saved("auth0|ana")
+
+        mockMvc
+            .delete("/snippets/$id") { with(jwt().jwt { it.subject("auth0|ana") }.authorities(readSnippets)) }
+            .andExpect { status { isForbidden() } }
+
+        assertEquals(true, repository.existsById(id))
+    }
+
+    @Test
+    fun `DELETE snippets con un token sin sub responde 401`() {
+        mockMvc
+            .delete("/snippets/${UUID.randomUUID()}") {
+                with(jwt().jwt { token -> token.claims { it.remove("sub") } }.authorities(writeSnippets))
+            }.andExpect { status { isUnauthorized() } }
     }
 
     // Un snippet ya guardado, con su contenido en el asset service, listo para pedirlo

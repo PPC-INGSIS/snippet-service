@@ -344,4 +344,69 @@ class SnippetServiceTest(
         asset.failWith = null
         assertSigueIgual(snippet.id)
     }
+
+    @Test
+    fun `el dueno borra el snippet, su contenido y sus accesos`() {
+        val snippet = created()
+
+        val result = service.delete(owner, snippet.id)
+
+        assertIs<DeleteSnippetResult.Deleted>(result)
+        assertEquals(false, repository.existsById(snippet.id))
+        assertEquals(0, asset.count())
+        assertNull(permissions.ownerOf(snippet.id))
+    }
+
+    @Test
+    fun `borrar el snippet de otro usuario no borra nada`() {
+        val snippet = created()
+
+        val result = service.delete("auth0|beto", snippet.id)
+
+        assertIs<DeleteSnippetResult.NotFound>(result)
+        assertSigueIgual(snippet.id)
+        assertEquals(owner, permissions.ownerOf(snippet.id))
+    }
+
+    @Test
+    fun `borrar un id que no existe responde NotFound`() {
+        assertIs<DeleteSnippetResult.NotFound>(service.delete(owner, UUID.randomUUID()))
+    }
+
+    @Test
+    fun `borrar un snippet no toca los demas`() {
+        val borrado = created()
+        val otro = assertIs<CreateSnippetResult.Created>(service.create(owner, despedida)).snippet
+
+        service.delete(owner, borrado.id)
+
+        assertEquals(true, repository.existsById(otro.id))
+        assertEquals(1, asset.count())
+        assertEquals(owner, permissions.ownerOf(otro.id))
+    }
+
+    // La fila ya no está: el snippet desapareció para el usuario aunque el contenido quede huérfano
+    @Test
+    fun `si falla el asset service igual se borra el snippet`() {
+        val snippet = created()
+        asset.failWith = "connection refused"
+
+        val result = service.delete(owner, snippet.id)
+
+        assertIs<DeleteSnippetResult.Deleted>(result)
+        assertEquals(false, repository.existsById(snippet.id))
+        asset.failWith = null
+        assertEquals(1, asset.count())
+    }
+
+    @Test
+    fun `si falla Permisos igual se borra el snippet`() {
+        val snippet = created()
+        permissions.failWith = "connection refused"
+
+        val result = service.delete(owner, snippet.id)
+
+        assertIs<DeleteSnippetResult.Deleted>(result)
+        assertEquals(false, repository.existsById(snippet.id))
+    }
 }

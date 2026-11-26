@@ -6,7 +6,9 @@ import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
 import snippetsearcher.snippets.asset.AssetClient
 import snippetsearcher.snippets.asset.ContentResult
+import snippetsearcher.snippets.asset.DeleteContentResult
 import snippetsearcher.snippets.asset.SaveContentResult
+import snippetsearcher.snippets.permissions.DeleteAccessesResult
 import snippetsearcher.snippets.permissions.PermissionsClient
 import snippetsearcher.snippets.permissions.RegisterOwnerResult
 import snippetsearcher.snippets.printscript.PrintScriptClient
@@ -123,6 +125,33 @@ class SnippetService(
                 }
             },
         )
+
+    /**
+     * Borra el snippet del dueño: la fila, el contenido y los accesos.
+     *
+     * Al revés que al crear: primero la fila, que es lo que hace visible al snippet. Con la fila
+     * borrada ya nadie lo ve ni lo puede pedir. Si después falla el asset service o Permisos, lo
+     * único que queda son datos huérfanos que nadie alcanza. Se avisa en el log y la respuesta es
+     * de éxito: el usuario pidió que desaparezca y desapareció, y reintentar no arregla nada,
+     * porque el snippet ya no existe para él.
+     */
+    fun delete(
+        ownerId: String,
+        id: UUID,
+    ): DeleteSnippetResult {
+        val snippet = repository.findByIdAndOwnerId(id, ownerId) ?: return DeleteSnippetResult.NotFound
+
+        repository.delete(snippet)
+
+        if (assetClient.delete(id) is DeleteContentResult.Failed) {
+            log.warn("Se borró el snippet {} pero quedó su contenido en el asset service", id)
+        }
+        if (permissionsClient.deleteAccesses(id) is DeleteAccessesResult.Failed) {
+            log.warn("Se borró el snippet {} pero quedaron sus accesos en Permisos", id)
+        }
+
+        return DeleteSnippetResult.Deleted
+    }
 
     /**
      * Contenido, dueño y recién al final la fila.

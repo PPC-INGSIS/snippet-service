@@ -14,7 +14,7 @@ import java.util.concurrent.ConcurrentHashMap
 class FakePermissionsClient : PermissionsClient {
     private val owners = ConcurrentHashMap<UUID, String>()
 
-    /** Si no es null, registerOwner falla con este mensaje en vez de registrar. */
+    /** Si no es null, registerOwner y deleteAccesses fallan con este mensaje en vez de actuar. */
     var failWith: String? = null
 
     override fun registerOwner(
@@ -25,6 +25,13 @@ class FakePermissionsClient : PermissionsClient {
 
         owners[snippetId] = ownerId
         return RegisterOwnerResult.Registered
+    }
+
+    override fun deleteAccesses(snippetId: UUID): DeleteAccessesResult {
+        failWith?.let { return DeleteAccessesResult.Failed(it) }
+
+        owners.remove(snippetId)
+        return DeleteAccessesResult.Deleted
     }
 
     fun ownerOf(snippetId: UUID): String? = owners[snippetId]

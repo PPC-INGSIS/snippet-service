@@ -3,7 +3,7 @@ package snippetsearcher.snippets.asset
 import java.util.UUID
 
 /**
- * Lo que Snippets necesita del asset service: guardar y leer el contenido de un snippet.
+ * Lo que Snippets necesita del asset service: guardar, leer y borrar el contenido de un snippet.
  *
  * El contenido no vive en Postgres. La base guarda los datos (nombre, lenguaje, versión)
  * y el archivo vive acá, porque un snippet puede tener diez líneas o diez mil.
@@ -15,6 +15,18 @@ interface AssetClient {
     ): SaveContentResult
 
     fun get(snippetId: UUID): ContentResult
+
+    fun delete(snippetId: UUID): DeleteContentResult
+}
+
+sealed interface DeleteContentResult {
+    /** El contenido ya no está: se borró, o no estaba. Para quien llama es lo mismo. */
+    data object Deleted : DeleteContentResult
+
+    /** No se pudo borrar: el servicio falló o no contestó. */
+    data class Failed(
+        val message: String,
+    ) : DeleteContentResult
 }
 
 sealed interface SaveContentResult {

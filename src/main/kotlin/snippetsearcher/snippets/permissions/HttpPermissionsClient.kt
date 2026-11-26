@@ -61,6 +61,21 @@ class HttpPermissionsClient(
             RegisterOwnerResult.Failed(FAILED_MESSAGE)
         }
 
+    override fun deleteAccesses(snippetId: UUID): DeleteAccessesResult =
+        try {
+            // Permisos responde 204 aunque no hubiera accesos, así que no hay un 404 que distinguir
+            restClient
+                .delete()
+                .uri("/permissions/{snippetId}", snippetId)
+                .retrieve()
+                .toBodilessEntity()
+
+            DeleteAccessesResult.Deleted
+        } catch (exception: RestClientException) {
+            log.warn("No se pudieron borrar los accesos del snippet {} en Permisos", snippetId, exception)
+            DeleteAccessesResult.Failed(FAILED_MESSAGE)
+        }
+
     companion object {
         private const val OWNER = "OWNER"
         private const val FAILED_MESSAGE = "Permisos no respondió"
