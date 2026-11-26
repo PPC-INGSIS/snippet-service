@@ -43,8 +43,16 @@ class HttpPrintScriptClient(
             ValidationResult.Checked(response?.errors.orEmpty())
         } catch (exception: HttpClientErrorException) {
             // RestClient convierte los 4xx en excepciones; los rechazos de PrintScript vuelven a ser resultados
-            if (exception.statusCode.value() !in REJECTED_STATUSES) throw exception
+            if (exception.statusCode.value() !in REJECTED_STATUSES) {
+                log.warn(VALIDATE_FAILED_LOG, exception)
+                throw exception
+            }
             ValidationResult.Rejected(rejectionDetail(exception) ?: DEFAULT_REJECTION)
+        } catch (exception: RestClientException) {
+            // Un 5xx, un timeout o PrintScript caído. Se loguea acá y no se deja para Tomcat: cuando Tomcat
+            // la loguea, los filtros ya limpiaron el MDC y la línea sale sin trace.id ni user.id
+            log.warn(VALIDATE_FAILED_LOG, exception)
+            throw exception
         }
 
     override fun versions(): VersionsResult =
@@ -93,6 +101,8 @@ class HttpPrintScriptClient(
         private const val DEFAULT_REJECTION = "PrintScript rechazó el pedido"
 
         private const val VERSIONS_FAILED = "PrintScript no respondió"
+
+        private const val VALIDATE_FAILED_LOG = "No se pudo validar el snippet en PrintScript"
     }
 }
 

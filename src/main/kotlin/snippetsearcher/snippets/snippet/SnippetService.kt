@@ -37,9 +37,14 @@ class SnippetService(
         newSnippet: NewSnippet,
     ): CreateSnippetResult =
         when (val validation = printScriptClient.validate(newSnippet.version, newSnippet.content)) {
-            is ValidationResult.Rejected -> CreateSnippetResult.Rejected(validation.message)
+            // El quién y el trace id no van acá: los pone el MDC en cada línea
+            is ValidationResult.Rejected -> {
+                log.info("PrintScript rechazó el pedido: {}", validation.message)
+                CreateSnippetResult.Rejected(validation.message)
+            }
             is ValidationResult.Checked ->
                 if (validation.errors.isNotEmpty()) {
+                    log.info("Snippet con {} errores de código, no se crea", validation.errors.size)
                     CreateSnippetResult.Invalid(validation.errors)
                 } else {
                     store(ownerId, newSnippet)
@@ -55,7 +60,12 @@ class SnippetService(
         ownerId: String,
         id: UUID,
     ): FindSnippetResult {
-        val snippet = repository.findByIdAndOwnerId(id, ownerId) ?: return FindSnippetResult.NotFound
+        val snippet =
+            repository.findByIdAndOwnerId(id, ownerId) ?: run {
+                // Resultado de la consulta, no un error: puede no existir o ser de otro
+                log.info("No se encontró el snippet {} para este usuario", id)
+                return FindSnippetResult.NotFound
+            }
 
         return when (val content = assetClient.get(id)) {
             is ContentResult.Found -> FindSnippetResult.Found(snippet, content.content)
@@ -223,12 +233,19 @@ class SnippetService(
         val id = UUID.randomUUID()
 
         when (val saved = assetClient.put(id, newSnippet.content)) {
-            is SaveContentResult.Failed -> return CreateSnippetResult.ContentNotSaved(saved.message)
+            is SaveContentResult.Failed -> {
+                log.warn("No se creó el snippet {}: el asset service no guardó el contenido", id)
+                return CreateSnippetResult.ContentNotSaved(saved.message)
+            }
             is SaveContentResult.Saved -> Unit
         }
 
         when (val registered = permissionsClient.registerOwner(id, ownerId)) {
-            is RegisterOwnerResult.Failed -> return CreateSnippetResult.OwnerNotRegistered(registered.message)
+            is RegisterOwnerResult.Failed -> {
+                // El contenido ya quedó escrito: queda huérfano en el bucket
+                log.warn("No se creó el snippet {}: Permisos no registró al dueño. Queda contenido huérfano", id)
+                return CreateSnippetResult.OwnerNotRegistered(registered.message)
+            }
             is RegisterOwnerResult.Registered -> Unit
         }
 
@@ -241,7 +258,10 @@ class SnippetService(
                 language = newSnippet.language,
                 version = newSnippet.version,
             )
-        return CreateSnippetResult.Created(repository.save(snippet))
+        val guardado = repository.save(snippet)
+        // Cambio de estado: se creó algo. El "quién" sale del MDC
+        log.info("Snippet creado: id={} lenguaje={} version={}", guardado.id, guardado.language, guardado.version)
+        return CreateSnippetResult.Created(guardado)
     }
 }
 

@@ -20,6 +20,8 @@ WORKDIR /app
 
 RUN useradd --system --no-create-home --shell /usr/sbin/nologin app
 COPY --from=build --chown=app:app /app/build/libs/*SNAPSHOT.jar app.jar
+COPY --from=build --chown=app:app /app/build/newrelic/newrelic.jar newrelic.jar
+COPY --chown=app:app newrelic/newrelic.yml newrelic.yml
 USER app
 
 # El puerto es configuración: el stack lo puede pisar con SERVER_PORT. Spring y el
@@ -33,4 +35,6 @@ EXPOSE ${SERVER_PORT}
 HEALTHCHECK --interval=10s --timeout=3s --start-period=60s --retries=3 \
     CMD wget -q -O /dev/null "http://127.0.0.1:${SERVER_PORT}/actuator/health/readiness" || exit 1
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# El agente se engancha antes que Spring: va en la línea de java, no adentro de la app.
+# Sin NEW_RELIC_LICENSE_KEY no manda nada y la app arranca igual.
+ENTRYPOINT ["java", "-javaagent:/app/newrelic.jar", "-jar", "app.jar"]
