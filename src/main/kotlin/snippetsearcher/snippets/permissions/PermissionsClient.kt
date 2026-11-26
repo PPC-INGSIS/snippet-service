@@ -30,6 +30,20 @@ interface PermissionsClient {
         snippetId: UUID,
         userId: String,
     ): RoleResult
+
+    /** Los snippets que le compartieron a ese usuario (rol READ), según Permisos. */
+    fun sharedWith(userId: String): SharedSnippetsResult
+}
+
+sealed interface SharedSnippetsResult {
+    data class Found(
+        val snippetIds: List<UUID>,
+    ) : SharedSnippetsResult
+
+    /** No se pudo saber: el servicio falló o no contestó. Distinto de "no le compartieron nada". */
+    data class Failed(
+        val message: String,
+    ) : SharedSnippetsResult
 }
 
 sealed interface RoleResult {

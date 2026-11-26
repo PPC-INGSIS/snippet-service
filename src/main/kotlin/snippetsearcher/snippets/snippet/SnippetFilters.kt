@@ -1,6 +1,7 @@
 package snippetsearcher.snippets.snippet
 
 import org.springframework.data.jpa.domain.Specification
+import java.util.UUID
 
 /**
  * Los filtros del listado, cada uno por separado, para combinar solo los que vinieron.
@@ -13,6 +14,12 @@ internal object SnippetFilters {
     fun ownedBy(ownerId: String) =
         Specification<Snippet> { snippet, _, criteria ->
             criteria.equal(snippet.get<String>("ownerId"), ownerId)
+        }
+
+    /** Uno de estos ids. Sin ids no matchea nada: un IN vacío no es SQL válido. */
+    fun idIn(ids: Collection<UUID>) =
+        Specification<Snippet> { snippet, _, criteria ->
+            if (ids.isEmpty()) criteria.disjunction() else snippet.get<UUID>("id").`in`(ids)
         }
 
     /**

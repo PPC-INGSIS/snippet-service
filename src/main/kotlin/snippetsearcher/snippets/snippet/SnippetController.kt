@@ -59,6 +59,17 @@ class SnippetController(
 
             is ListSnippetsResult.SortDirectionNotAllowed ->
                 badRequest("sortDirection tiene que ser asc o desc, no '${result.direction}'")
+
+            is ListSnippetsResult.RelationNotAllowed ->
+                badRequest(
+                    "relation tiene que ser ${SnippetRelation.values.joinToString(", ")}, no '${result.relation}'",
+                )
+
+            // 502: el pedido estaba bien, falló Permisos, que es el que sabe qué te compartieron
+            is ListSnippetsResult.SharedUnavailable ->
+                ResponseEntity
+                    .status(HttpStatus.BAD_GATEWAY)
+                    .body(UpstreamErrorResponse("No se pudieron obtener los snippets compartidos"))
         }
     }
 
@@ -237,9 +248,12 @@ data class ListSnippetsRequest(
     val language: String? = null,
     val sortBy: String? = null,
     val sortDirection: String? = null,
+    // owned, shared o all (por defecto): los propios, los compartidos o los dos
+    val relation: String? = null,
 )
 
-private fun ListSnippetsRequest.toQuery() = SnippetQuery(page, pageSize, snippetName, language, sortBy, sortDirection)
+private fun ListSnippetsRequest.toQuery() =
+    SnippetQuery(page, pageSize, snippetName, language, sortBy, sortDirection, relation)
 
 data class CreateSnippetRequest(
     val name: String,

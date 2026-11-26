@@ -114,6 +114,25 @@ class HttpPermissionsClient(
             RoleResult.Failed(FAILED_MESSAGE)
         }
 
+    override fun sharedWith(userId: String): SharedSnippetsResult =
+        try {
+            val accesses =
+                restClient
+                    .get()
+                    .uri("/permissions?userId={userId}&role={role}", userId, READ)
+                    .retrieve()
+                    .body<List<AccessResponse>>()
+
+            // Sin accesos Permisos responde una lista vacía, no 404: el null es un body que no llegó
+            accesses?.let { list -> SharedSnippetsResult.Found(list.map { it.snippetId }) } ?: run {
+                log.warn("Permisos respondió los snippets compartidos sin body")
+                SharedSnippetsResult.Failed(FAILED_MESSAGE)
+            }
+        } catch (exception: RestClientException) {
+            log.warn("No se pudieron consultar los snippets compartidos en Permisos", exception)
+            SharedSnippetsResult.Failed(FAILED_MESSAGE)
+        }
+
     companion object {
         private const val OWNER = "OWNER"
         private const val READ = "READ"
@@ -124,6 +143,11 @@ class HttpPermissionsClient(
 // Respuesta de GET /permissions/{snippetId}. Solo se usa el rol
 data class PermissionResponse(
     val role: String,
+)
+
+// Cada elemento de GET /permissions?userId=. Solo se usa el snippet
+data class AccessResponse(
+    val snippetId: UUID,
 )
 
 // El cuerpo que espera POST /permissions

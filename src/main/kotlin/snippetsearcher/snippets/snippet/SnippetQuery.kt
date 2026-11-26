@@ -4,6 +4,7 @@ package snippetsearcher.snippets.snippet
  * Lo que se puede pedir al listar snippets.
  *
  * El dueño va aparte y no acá: no lo elige quien pregunta, sale del token.
+ * `relation` en null es "all": los propios y los compartidos.
  *
  * `name` y `language` en null (o en blanco) significan "sin filtrar". `sortBy` y
  * `sortDirection` llegan como texto a propósito: los valida el servicio, que es el que
@@ -16,7 +17,27 @@ data class SnippetQuery(
     val language: String? = null,
     val sortBy: String? = null,
     val sortDirection: String? = null,
+    val relation: String? = null,
 )
+
+/**
+ * Qué snippets entran según la relación con quien pregunta: los suyos, los que le compartieron,
+ * o los dos. Enum por lo mismo que SnippetSortField: un valor inventado es un 400, no un 500.
+ */
+enum class SnippetRelation(
+    val value: String,
+) {
+    OWNED("owned"),
+    SHARED("shared"),
+    ALL("all"),
+    ;
+
+    companion object {
+        fun from(value: String): SnippetRelation? = entries.firstOrNull { it.value.equals(value, ignoreCase = true) }
+
+        val values: List<String> get() = entries.map { it.value }
+    }
+}
 
 /**
  * Los campos por los que se puede ordenar.

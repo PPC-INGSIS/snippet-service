@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Import
 import snippetsearcher.snippets.TestcontainersConfiguration
 import snippetsearcher.snippets.asset.FakeAssetClient
 import snippetsearcher.snippets.asset.FakeAssetConfiguration
+import snippetsearcher.snippets.permissions.FakePermissionsClient
 import snippetsearcher.snippets.permissions.FakePermissionsConfiguration
 import snippetsearcher.snippets.printscript.FakePrintScriptConfiguration
 import java.util.UUID
@@ -35,10 +36,13 @@ class SnippetListTest(
     @Autowired private val service: SnippetService,
     @Autowired private val repository: SnippetRepository,
     @Autowired private val asset: FakeAssetClient,
+    @Autowired private val permissions: FakePermissionsClient,
 ) {
+    // Permisos también: el listado le pregunta qué está compartido, y otra clase pudo dejarlo fallando
     @BeforeEach
-    fun limpiarElAsset() {
+    fun limpiarFakes() {
         asset.clear()
+        permissions.clear()
     }
 
     @Test

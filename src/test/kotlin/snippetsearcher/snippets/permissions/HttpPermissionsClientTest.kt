@@ -210,6 +210,36 @@ class HttpPermissionsClientTest {
         assertIs<RoleResult.Failed>(client.roleOf(UUID.randomUUID(), "auth0|beto"))
     }
 
+    @Test
+    fun `sharedWith pide los accesos READ del usuario y devuelve los ids`() {
+        status = 200
+        val compartido = UUID.randomUUID()
+        responseBody = """[{"snippetId":"$compartido","userId":"auth0|beto","role":"READ"}]"""
+
+        val result = client.sharedWith("auth0|beto")
+
+        assertEquals(listOf(compartido), assertIs<SharedSnippetsResult.Found>(result).snippetIds)
+        assertEquals("GET", receivedMethod)
+        assertEquals("/permissions", receivedPath)
+        assertEquals("userId=auth0|beto&role=READ", receivedQuery)
+        assertEquals("Bearer $TOKEN", receivedAuth)
+    }
+
+    @Test
+    fun `sharedWith sin accesos devuelve una lista vacia`() {
+        status = 200
+        responseBody = "[]"
+
+        assertEquals(emptyList(), assertIs<SharedSnippetsResult.Found>(client.sharedWith("auth0|beto")).snippetIds)
+    }
+
+    @Test
+    fun `sharedWith con un error del servidor devuelve Failed`() {
+        status = 500
+
+        assertIs<SharedSnippetsResult.Failed>(client.sharedWith("auth0|beto"))
+    }
+
     companion object {
         private const val TOKEN = "token-del-usuario"
         private val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(2)
