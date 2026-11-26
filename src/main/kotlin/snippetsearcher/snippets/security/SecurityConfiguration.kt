@@ -24,6 +24,12 @@ class SecurityConfiguration {
                     // Va primero: Spring usa la primera regla que coincide, y el healthcheck también es un GET
                     .requestMatchers("/actuator/health/**")
                     .permitAll()
+                    // El handshake del WebSocket entra sin token: al abrir un WebSocket el browser no
+                    // puede mandar headers, así que no hay dónde poner el Bearer. Lo autentica el
+                    // handler con el primer mensaje, y hasta entonces no se ejecuta nada.
+                    // Va antes del GET de abajo, que si no se lo come: el handshake también es un GET
+                    .requestMatchers(HttpMethod.GET, "/snippets/*/execution")
+                    .permitAll()
                     .requestMatchers(HttpMethod.GET, "/**")
                     .hasAuthority("SCOPE_read:snippets")
                     .anyRequest()
