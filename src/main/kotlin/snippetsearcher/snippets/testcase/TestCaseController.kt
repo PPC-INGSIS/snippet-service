@@ -30,6 +30,16 @@ class TestCaseController(
         return when (val result = service.list(ownerId, snippetId)) {
             is ListTestCasesResult.Listed -> ResponseEntity.ok(result.testCases.map { it.toResponse() })
             ListTestCasesResult.SnippetNotFound -> ResponseEntity.notFound().build()
+            // 502: el pedido estaba bien, falló Permisos
+            is ListTestCasesResult.AccessUnknown ->
+                ResponseEntity
+                    .status(HttpStatus.BAD_GATEWAY)
+                    .body(
+                        ProblemDetail.forStatusAndDetail(
+                            HttpStatus.BAD_GATEWAY,
+                            "No se pudo verificar el acceso al snippet",
+                        ),
+                    )
         }
     }
 

@@ -109,6 +109,20 @@ class SharedSnippetListTest(
         assertEquals("Saludo de ana", listado.snippets.single().name)
     }
 
+    // El filtro tiene que aplicarse a los propios y a los compartidos: (dueño OR compartido) AND nombre.
+    // Si se armara owned OR (compartido AND nombre), "Factorial" volvería ignorando el filtro
+    @Test
+    fun `con relation all el filtro de nombre se aplica tambien a los propios`() {
+        val (ana, beto) = usuarios("precedencia")
+        guardar(beto, "Factorial")
+        compartir(guardar(ana, "Saludo de ana"), beto)
+
+        val listado = listar(beto, "all", name = "salud")
+
+        assertEquals(listOf("Saludo de ana"), listado.snippets.map { it.name })
+        assertEquals(1, listado.total)
+    }
+
     @Test
     fun `una relation que no existe se rechaza`() {
         val result = service.list(usuarios("invalida").second, query(relation = "amigos"))

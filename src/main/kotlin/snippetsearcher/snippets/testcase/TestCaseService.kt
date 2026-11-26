@@ -2,12 +2,17 @@ package snippetsearcher.snippets.testcase
 
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import snippetsearcher.snippets.snippet.ReadAccess
+import snippetsearcher.snippets.snippet.SnippetAccess
 import snippetsearcher.snippets.snippet.SnippetRepository
 import java.time.Instant
 import java.util.UUID
 
 /**
- * Los tests de un snippet: crear, listar, actualizar y borrar. Solo el dueño del snippet.
+ * Los tests de un snippet: crear, listar, actualizar y borrar.
+ *
+ * Listar lo puede hacer quien puede leer el snippet (el dueño o alguien con quien se compartió),
+ * con la misma regla que ver el snippet. Crear, actualizar y borrar siguen siendo solo del dueño.
  *
  * Guardar un test no lo ejecuta: se puede guardar uno cuyos outputs no coinciden con lo que haría
  * el snippet (la US 8 lo permite). Correrlo es otro ticket.
@@ -15,17 +20,21 @@ import java.util.UUID
 @Service
 class TestCaseService(
     private val snippets: SnippetRepository,
+    private val access: SnippetAccess,
     private val testCases: TestCaseRepository,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
     fun list(
-        ownerId: String,
+        userId: String,
         snippetId: UUID,
-    ): ListTestCasesResult {
-        if (!ownsSnippet(ownerId, snippetId)) return ListTestCasesResult.SnippetNotFound
-        return ListTestCasesResult.Listed(testCases.findBySnippetIdOrderByCreatedAtAscIdAsc(snippetId))
-    }
+    ): ListTestCasesResult =
+        when (val read = access.readable(userId, snippetId)) {
+            is ReadAccess.Granted ->
+                ListTestCasesResult.Listed(testCases.findBySnippetIdOrderByCreatedAtAscIdAsc(snippetId))
+            ReadAccess.Denied -> ListTestCasesResult.SnippetNotFound
+            is ReadAccess.Unknown -> ListTestCasesResult.AccessUnknown(read.message)
+        }
 
     fun create(
         ownerId: String,

@@ -12,6 +12,7 @@ import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequ
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.delete
 import org.springframework.test.web.servlet.get
+import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.put
 import snippetsearcher.snippets.TestcontainersConfiguration
 import snippetsearcher.snippets.asset.FakeAssetClient
@@ -144,6 +145,49 @@ class SharedSnippetControllerTest(
 
         mockMvc.get("/snippets") { with(beto) }.andExpect { status { isBadGateway() } }
         mockMvc.get("/snippets?relation=owned") { with(beto) }.andExpect { status { isOk() } }
+    }
+
+    // El criterio del #30: quien recibió el snippet ve sus tests, pero no los puede tocar
+    @Test
+    fun `GET tests de un snippet compartido responde 200 con los tests`() {
+        val id = saved("auth0|ana")
+        permissions.registerReader(id, "auth0|beto")
+        mockMvc
+            .post("/snippets/$id/tests") {
+                with(jwt().jwt { it.subject("auth0|ana") }.authorities(writeSnippets))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"name":"Saluda","input":["Juan"],"output":["Hola Juan"]}"""
+            }.andExpect { status { isCreated() } }
+
+        mockMvc
+            .get("/snippets/$id/tests") { with(jwt().jwt { it.subject("auth0|beto") }.authorities(readSnippets)) }
+            .andExpect {
+                status { isOk() }
+                jsonPath("$[0].name") { value("Saluda") }
+            }
+    }
+
+    @Test
+    fun `POST tests de un snippet compartido responde 404`() {
+        val id = saved("auth0|ana")
+        permissions.registerReader(id, "auth0|beto")
+
+        mockMvc
+            .post("/snippets/$id/tests") {
+                with(jwt().jwt { it.subject("auth0|beto") }.authorities(writeSnippets))
+                contentType = MediaType.APPLICATION_JSON
+                content = """{"name":"Intruso"}"""
+            }.andExpect { status { isNotFound() } }
+    }
+
+    @Test
+    fun `GET tests con Permisos caido para quien no es dueno responde 502`() {
+        val id = saved("auth0|ana")
+        permissions.failWith = "connection refused"
+
+        mockMvc
+            .get("/snippets/$id/tests") { with(jwt().jwt { it.subject("auth0|beto") }.authorities(readSnippets)) }
+            .andExpect { status { isBadGateway() } }
     }
 
     // Un snippet de ana, con su contenido en el asset service
