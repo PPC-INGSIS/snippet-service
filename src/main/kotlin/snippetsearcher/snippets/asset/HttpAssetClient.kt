@@ -77,6 +77,23 @@ class HttpAssetClient(
             ContentResult.Failed(FAILED_MESSAGE)
         }
 
+    override fun delete(snippetId: UUID): DeleteContentResult =
+        try {
+            restClient
+                .delete()
+                .uri(PATH, CONTAINER, snippetId)
+                .retrieve()
+                .toBodilessEntity()
+
+            DeleteContentResult.Deleted
+        } catch (ignored: HttpClientErrorException.NotFound) {
+            // El 404 es "ya no está": el resultado es el que pedimos, así un reintento no falla
+            DeleteContentResult.Deleted
+        } catch (exception: RestClientException) {
+            log.warn("No se pudo borrar el contenido del snippet {}", snippetId, exception)
+            DeleteContentResult.Failed(FAILED_MESSAGE)
+        }
+
     companion object {
         // El asset service agrupa los archivos por "container"; los nuestros van todos juntos
         private const val CONTAINER = "snippets"

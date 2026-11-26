@@ -14,8 +14,12 @@ import java.util.concurrent.ConcurrentHashMap
 class FakeAssetClient : AssetClient {
     private val contents = ConcurrentHashMap<UUID, String>()
 
-    /** Si no es null, put() falla con este mensaje en vez de guardar. */
+    /** Si no es null, put(), get() y delete() fallan con este mensaje en vez de actuar. */
     var failWith: String? = null
+
+    /** Cuántas veces se pidió un contenido, para probar quién llama al asset service y quién no. */
+    var gets = 0
+        private set
 
     override fun put(
         snippetId: UUID,
@@ -28,14 +32,23 @@ class FakeAssetClient : AssetClient {
     }
 
     override fun get(snippetId: UUID): ContentResult {
+        gets++
         failWith?.let { return ContentResult.Failed(it) }
 
         return contents[snippetId]?.let { ContentResult.Found(it) } ?: ContentResult.NotFound
     }
 
+    override fun delete(snippetId: UUID): DeleteContentResult {
+        failWith?.let { return DeleteContentResult.Failed(it) }
+
+        contents.remove(snippetId)
+        return DeleteContentResult.Deleted
+    }
+
     fun clear() {
         contents.clear()
         failWith = null
+        gets = 0
     }
 
     fun count() = contents.size
