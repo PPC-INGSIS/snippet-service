@@ -7,6 +7,15 @@ import snippetsearcher.snippets.printscript.VersionsResult
 class LanguageCatalog(
     private val languages: List<Language>,
 ) {
+    /**
+     * La extensión de ese lenguaje, o vacío si no está en el catálogo.
+     *
+     * No pregunta versiones, así que no sale a PrintScript: la extensión es un dato del lenguaje y
+     * no cambia. Por eso se puede resolver en cada respuesta sin costo.
+     */
+    fun extensionOf(language: String): String =
+        languages.firstOrNull { it.name.equals(language, ignoreCase = true) }?.extension.orEmpty()
+
     fun all(): LanguagesResult {
         val available =
             languages.map { language ->

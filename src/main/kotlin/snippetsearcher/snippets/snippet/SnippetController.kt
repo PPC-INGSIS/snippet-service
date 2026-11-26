@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import snippetsearcher.snippets.language.LanguageCatalog
 import snippetsearcher.snippets.printscript.ValidationError
 import java.util.UUID
 
@@ -22,6 +23,8 @@ import java.util.UUID
 @RequestMapping("/snippets")
 class SnippetController(
     private val service: SnippetService,
+    private val authors: SnippetAuthors,
+    private val languages: LanguageCatalog,
 ) {
     /**
      * Mis snippets. Los parámetros y la forma de la respuesta son las que manda la UI
@@ -46,7 +49,7 @@ class SnippetController(
                         page = request.page,
                         pageSize = request.pageSize,
                         count = result.total,
-                        snippets = result.snippets.map { it.toResponse() },
+                        snippets = result.snippets.conAutores(),
                     ),
                 )
 
@@ -81,7 +84,14 @@ class SnippetController(
         val ownerId = jwt.subject ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         return when (val result = service.find(ownerId, id)) {
-            is FindSnippetResult.Found -> ResponseEntity.ok(result.snippet.toDetailResponse(result.content))
+            is FindSnippetResult.Found ->
+                ResponseEntity.ok(
+                    result.snippet.toDetailResponse(
+                        autorDe(result.snippet),
+                        extensionDe(result.snippet),
+                        result.content,
+                    ),
+                )
 
             FindSnippetResult.NotFound -> ResponseEntity.notFound().build()
 
@@ -112,7 +122,10 @@ class SnippetController(
 
         return when (val result = service.share(ownerId, id, request.userId)) {
             // La UI espera el snippet de vuelta, no un cuerpo vacio
-            is ShareSnippetResult.Shared -> ResponseEntity.ok(result.snippet.toResponse())
+            is ShareSnippetResult.Shared ->
+                ResponseEntity.ok(
+                    result.snippet.toResponse(autorDe(result.snippet), extensionDe(result.snippet)),
+                )
 
             // 404 y no 403: un 403 le confirmaria a cualquiera que ese id existe
             ShareSnippetResult.NotFound -> ResponseEntity.notFound().build()
@@ -160,7 +173,13 @@ class SnippetController(
 
         return when (val result = service.update(ownerId, id, changes)) {
             is UpdateSnippetResult.Updated ->
-                ResponseEntity.ok(result.snippet.toDetailResponse(request.content))
+                ResponseEntity.ok(
+                    result.snippet.toDetailResponse(
+                        autorDe(result.snippet),
+                        extensionDe(result.snippet),
+                        request.content,
+                    ),
+                )
 
             UpdateSnippetResult.NotFound -> ResponseEntity.notFound().build()
 
@@ -196,7 +215,9 @@ class SnippetController(
 
         return when (val result = service.create(ownerId, newSnippet)) {
             is CreateSnippetResult.Created ->
-                ResponseEntity.status(HttpStatus.CREATED).body(result.snippet.toResponse())
+                ResponseEntity.status(
+                    HttpStatus.CREATED,
+                ).body(result.snippet.toResponse(autorDe(result.snippet), extensionDe(result.snippet)))
 
             is CreateSnippetResult.Invalid ->
                 ResponseEntity.badRequest().body(InvalidSnippetResponse(result.errors))
@@ -220,6 +241,28 @@ class SnippetController(
                     .body(UpstreamErrorResponse("No se pudo guardar el contenido del snippet"))
         }
     }
+
+    /**
+     * Los nombres de los dueños de toda la página en una sola consulta, no uno por fila.
+     *
+     * Varias filas suelen compartir dueño, así que `namesOf` recibe los ids distintos: una página
+     * de 100 snippets de un mismo dueño es una sola consulta a Auth0.
+     */
+    private fun List<Snippet>.conAutores(): List<SnippetResponse> {
+        val nombres = authors.namesOf(map { it.ownerId })
+        return map { it.toResponse(nombres.getValue(it.ownerId), extensionDe(it)) }
+    }
+
+    private fun autorDe(snippet: Snippet) = authors.nameOf(snippet.ownerId)
+
+    /**
+     * La extensión sale del catálogo de lenguajes, no del snippet.
+     *
+     * Es un dato **derivado** del lenguaje: guardarla permitiría un snippet `printscript` con
+     * extensión `exe`, obligaría a cada cliente a mandarla y podría desincronizarse al cambiar el
+     * lenguaje en un PUT. Derivada, no puede estar mal.
+     */
+    private fun extensionDe(snippet: Snippet) = languages.extensionOf(snippet.language)
 
     companion object {
         // Cuánto puede pedir la UI de una vez: la tabla ofrece hasta 100 filas por página
@@ -278,6 +321,9 @@ data class SnippetResponse(
     val description: String,
     val language: String,
     val version: String,
+    val extension: String,
+    // El nombre del dueño, no su sub: es lo que la UI muestra en la columna Author
+    val author: String,
 )
 
 // La forma que espera la UI (PaginatedSnippets en printscript-ui)
@@ -295,6 +341,8 @@ data class SnippetDetailResponse(
     val description: String,
     val language: String,
     val version: String,
+    val extension: String,
+    val author: String,
     val content: String,
 )
 
@@ -302,10 +350,16 @@ data class InvalidSnippetResponse(
     val errors: List<ValidationError>,
 )
 
-private fun Snippet.toResponse() = SnippetResponse(id, name, description, language, version)
+private fun Snippet.toResponse(
+    author: String,
+    extension: String,
+) = SnippetResponse(id, name, description, language, version, extension, author)
 
-private fun Snippet.toDetailResponse(content: String) =
-    SnippetDetailResponse(id, name, description, language, version, content)
+private fun Snippet.toDetailResponse(
+    author: String,
+    extension: String,
+    content: String,
+) = SnippetDetailResponse(id, name, description, language, version, extension, author, content)
 
 data class RejectedSnippetResponse(
     val message: String,
