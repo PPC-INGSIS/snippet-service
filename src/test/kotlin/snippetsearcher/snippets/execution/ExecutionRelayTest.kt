@@ -1,5 +1,6 @@
 package snippetsearcher.snippets.execution
 
+import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
@@ -21,6 +22,7 @@ import snippetsearcher.snippets.printscript.FakePrintScriptConfiguration
 import snippetsearcher.snippets.snippet.Snippet
 import snippetsearcher.snippets.snippet.SnippetRepository
 import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
@@ -47,6 +49,10 @@ import kotlin.test.assertTrue
     properties = [
         // Corto, para probar que una conexión que no autentica se cierra sin esperar los 5 s de prod
         "execution.auth-timeout=2s",
+        // Tope chico para poder probarlo. El @AfterEach cierra todo y espera a que se devuelvan los
+        // lugares: el contador vive en el contexto, así que una sesión que queda abierta deja al
+        // usuario ocupado para el test que viene
+        "snippets.execution.max-per-user=2",
         // Stream y grupo propios. Esta clase levanta otro contexto de Spring —con servidor real— y
         // por lo tanto otro PingConsumer. En un grupo de consumidores de Redis cada mensaje le llega
         // a uno solo, así que con el grupo compartido este consumidor le robaba el ping a
@@ -60,13 +66,24 @@ class ExecutionRelayTest(
     @Autowired private val asset: FakeAssetClient,
     @Autowired private val permissions: FakePermissionsClient,
     @Autowired private val executions: FakeInteractiveExecutionClient,
+    @Autowired private val slots: UserExecutions,
     @LocalServerPort private val port: Int,
 ) {
+    private val abiertos = CopyOnWriteArrayList<Browser>()
+
     @BeforeEach
     fun limpiarLosFakes() {
         asset.clear()
         permissions.clear()
         executions.clear()
+    }
+
+    @AfterEach
+    fun cerrarLasConexiones() {
+        abiertos.forEach { runCatching { it.cerrar() } }
+        abiertos.clear()
+        // Los lugares se devuelven en el servidor, que se entera del cierre un instante después
+        esperar { slots.openFor(ana) == 0 && slots.openFor(beto) == 0 }
     }
 
     @Test
@@ -127,7 +144,7 @@ class ExecutionRelayTest(
         browser.manda("""{"type":"auth","token":"cualquier-cosa"}""")
 
         assertTrue("rejected" in browser.recibe())
-        assertNotNull(browser.cierre())
+        assertEquals(RECHAZO, browser.cierre()?.code)
         assertTrue(executions.starts.isEmpty())
     }
 
@@ -238,7 +255,77 @@ class ExecutionRelayTest(
         assertTrue(executions.inputs.isEmpty())
     }
 
+    @Test
+    fun `un usuario en el tope no puede abrir otra ejecucion, y no se abre nada en PrintScript`() {
+        val id = guardar(ana)
+        repeat(slots.maxPerUser) {
+            conectar(id).manda("""{"type":"auth","token":"$TOKEN_DE_ANA"}""")
+        }
+        esperar { executions.starts.size == slots.maxPerUser }
+
+        val deMas = conectar(id)
+        deMas.manda("""{"type":"auth","token":"$TOKEN_DE_ANA"}""")
+
+        assertTrue("rejected" in deMas.recibe())
+        // El motivo está en el mensaje y no en el código: medido, un cierre con 1013 llega como
+        // 1002, que diría algo falso. Lo que la UI muestra es el texto del rejected
+        assertEquals(RECHAZO, deMas.cierre()?.code)
+        // Y no se gastó una conexión a PrintScript en algo que ya se sabía que no iba a entrar
+        assertEquals(slots.maxPerUser, executions.starts.size)
+    }
+
+    @Test
+    fun `al cerrar una ejecucion el mismo usuario puede abrir otra`() {
+        val id = guardar(ana)
+        val primeros = (1..slots.maxPerUser).map { conectar(id) }
+        primeros.forEach { it.manda("""{"type":"auth","token":"$TOKEN_DE_ANA"}""") }
+        esperar { executions.starts.size == slots.maxPerUser }
+
+        primeros.first().cerrar()
+        esperar { slots.openFor(ana) == slots.maxPerUser - 1 }
+
+        conectar(id).manda("""{"type":"auth","token":"$TOKEN_DE_ANA"}""")
+        esperar { executions.starts.size == slots.maxPerUser + 1 }
+    }
+
+    // El tope es por usuario: que uno lo llene no puede dejar a los demás sin ejecutar
+    @Test
+    fun `otro usuario puede ejecutar aunque el primero este en el tope`() {
+        val id = guardar(ana)
+        permissions.registerReader(id, beto)
+        repeat(slots.maxPerUser) {
+            conectar(id).manda("""{"type":"auth","token":"$TOKEN_DE_ANA"}""")
+        }
+        esperar { executions.starts.size == slots.maxPerUser }
+
+        conectar(id).manda("""{"type":"auth","token":"$TOKEN_DE_BETO"}""")
+
+        esperar { executions.starts.size == slots.maxPerUser + 1 }
+        assertEquals(1, slots.openFor(beto))
+    }
+
+    /**
+     * El tope de PrintScript es otro y es global: cuando lo alcanza, manda su `rejected` y cierra.
+     *
+     * Eso tiene que llegarle al browser sin que el relay lo interprete, porque es el único lugar
+     * donde el usuario puede ver por qué no pudo ejecutar.
+     */
+    @Test
+    fun `si PrintScript rechaza por su tope global, el browser recibe el motivo`() {
+        val browser = conectar(guardar(ana))
+        browser.manda("""{"type":"auth","token":"$TOKEN_DE_ANA"}""")
+        esperarQueArranque()
+
+        val rechazo = """{"type":"rejected","detail":"Se alcanzó el máximo de conexiones abiertas (16)"}"""
+        executions.emit(rechazo)
+        executions.finish()
+
+        assertEquals(rechazo, browser.recibe())
+        assertNotNull(browser.cierre())
+    }
+
     private val ana = "auth0|ana"
+    private val beto = "auth0|beto"
 
     private fun guardar(ownerId: String): UUID {
         val id = UUID.randomUUID()
@@ -285,7 +372,12 @@ class ExecutionRelayTest(
                 .execute(handler, "ws://localhost:$port/snippets/$snippetId/execution")
                 .get(5, TimeUnit.SECONDS)
 
-        return Browser(session, mensajes, cierres)
+        return Browser(session, mensajes, cierres).also { abiertos += it }
+    }
+
+    private companion object {
+        // 1008, el código con el que se cierra todo rechazo
+        const val RECHAZO = 1008
     }
 
     private class Browser(
