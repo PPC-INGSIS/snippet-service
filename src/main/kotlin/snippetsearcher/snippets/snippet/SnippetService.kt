@@ -14,7 +14,7 @@ import snippetsearcher.snippets.asset.SaveContentResult
 import snippetsearcher.snippets.permissions.DeleteAccessesResult
 import snippetsearcher.snippets.permissions.PermissionsClient
 import snippetsearcher.snippets.permissions.RegisterAccessResult
-import snippetsearcher.snippets.permissions.RoleResult
+import snippetsearcher.snippets.permissions.SharedSnippetsResult
 import snippetsearcher.snippets.printscript.PrintScriptClient
 import snippetsearcher.snippets.printscript.ValidationResult
 import java.util.UUID
@@ -25,6 +25,7 @@ class SnippetService(
     private val printScriptClient: PrintScriptClient,
     private val assetClient: AssetClient,
     private val permissionsClient: PermissionsClient,
+    private val access: SnippetAccess,
     transactionManager: PlatformTransactionManager,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -66,16 +67,15 @@ class SnippetService(
         id: UUID,
     ): FindSnippetResult {
         val snippet =
-            repository.findByIdAndOwnerId(id, userId)
-                ?: when (val access = sharedSnippet(userId, id)) {
-                    is SharedAccess.Granted -> access.snippet
-                    SharedAccess.Denied -> {
-                        // Resultado de la consulta, no un error: puede no existir o no estar compartido
-                        log.info("No se encontró el snippet {} para este usuario", id)
-                        return FindSnippetResult.NotFound
-                    }
-                    is SharedAccess.Unknown -> return FindSnippetResult.AccessUnknown(access.message)
+            when (val read = access.readable(userId, id)) {
+                is ReadAccess.Granted -> read.snippet
+                ReadAccess.Denied -> {
+                    // Resultado de la consulta, no un error: puede no existir o no estar compartido
+                    log.info("No se encontró el snippet {} para este usuario", id)
+                    return FindSnippetResult.NotFound
                 }
+                is ReadAccess.Unknown -> return FindSnippetResult.AccessUnknown(read.message)
+            }
 
         return when (val content = assetClient.get(id)) {
             is ContentResult.Found -> FindSnippetResult.Found(snippet, content.content)
@@ -86,22 +86,6 @@ class SnippetService(
                 FindSnippetResult.ContentMissing
             }
             is ContentResult.Failed -> FindSnippetResult.ContentUnavailable(content.message)
-        }
-    }
-
-    private fun sharedSnippet(
-        userId: String,
-        id: UUID,
-    ): SharedAccess {
-        val snippet = repository.findById(id).orElse(null) ?: return SharedAccess.Denied
-
-        return when (val role = permissionsClient.roleOf(id, userId)) {
-            // OWNER también: Permisos es el que decide, aunque hoy el dueño ya entró por la columna
-            is RoleResult.Found ->
-                if (role.role in READABLE_ROLES) SharedAccess.Granted(snippet) else SharedAccess.Denied
-            RoleResult.None -> SharedAccess.Denied
-            // El detalle ya quedó en el log del cliente
-            is RoleResult.Failed -> SharedAccess.Unknown(role.message)
         }
     }
 
@@ -175,10 +159,16 @@ class SnippetService(
         // pedidos, así que la UI podría ver una misma fila en dos páginas y nunca ver otra.
         val sort = Sort.by(direction, field.field).and(Sort.by(Sort.Direction.ASC, "id"))
 
+        val visible =
+            when (val result = visibleTo(ownerId, query.relation.filtro())) {
+                is Visible.By -> result.filter
+                is Visible.Rejected -> return result.reason
+            }
+
         val filters =
             Specification.allOf(
                 listOfNotNull(
-                    SnippetFilters.ownedBy(ownerId),
+                    visible,
                     query.name.filtro()?.let { SnippetFilters.nameContains(it) },
                     query.language.filtro()?.let { SnippetFilters.writtenIn(it) },
                 ),
@@ -186,6 +176,40 @@ class SnippetService(
 
         val pagina = repository.findAll(filters, PageRequest.of(query.page, query.pageSize, sort))
         return ListSnippetsResult.Listed(pagina.content, pagina.totalElements)
+    }
+
+    /**
+     * El filtro de "qué puede ver" según la relación pedida.
+     *
+     * Los propios salen de la columna y no dependen de Permisos. Los compartidos sí: se le pregunta
+     * a Permisos qué snippets tiene con rol READ, y se buscan esos ids en la misma consulta, así el
+     * orden, la paginación y el total siguen saliendo de Postgres en un solo pedido.
+     * Si Permisos no contesta, no se devuelve solo lo propio: una lista incompleta sin aviso le
+     * haría creer al usuario que le sacaron lo compartido. Pidiendo relation=owned anda igual.
+     */
+    private fun visibleTo(
+        userId: String,
+        relationValue: String?,
+    ): Visible {
+        // Sin relation: los propios y los compartidos
+        val relation =
+            if (relationValue == null) {
+                SnippetRelation.ALL
+            } else {
+                SnippetRelation.from(relationValue)
+                    ?: return Visible.Rejected(ListSnippetsResult.RelationNotAllowed(relationValue))
+            }
+
+        val owned = SnippetFilters.ownedBy(userId)
+        if (relation == SnippetRelation.OWNED) return Visible.By(owned)
+
+        return when (val shared = permissionsClient.sharedWith(userId)) {
+            is SharedSnippetsResult.Failed -> Visible.Rejected(ListSnippetsResult.SharedUnavailable(shared.message))
+            is SharedSnippetsResult.Found -> {
+                val sharedFilter = SnippetFilters.idIn(shared.snippetIds)
+                Visible.By(if (relation == SnippetRelation.SHARED) sharedFilter else owned.or(sharedFilter))
+            }
+        }
     }
 
     /**
@@ -338,17 +362,13 @@ data class NewSnippet(
     val content: String,
 )
 
-// Lo que dice Permisos de alguien que no es el dueño. Privado: fuera del service solo importa FindSnippetResult
-private sealed interface SharedAccess {
-    data class Granted(
-        val snippet: Snippet,
-    ) : SharedAccess
+// El filtro de visibilidad del listado, o por qué no se pudo armar (relation inválida, Permisos caído)
+private sealed interface Visible {
+    data class By(
+        val filter: Specification<Snippet>,
+    ) : Visible
 
-    data object Denied : SharedAccess
-
-    data class Unknown(
-        val message: String,
-    ) : SharedAccess
+    data class Rejected(
+        val reason: ListSnippetsResult,
+    ) : Visible
 }
-
-private val READABLE_ROLES = setOf("OWNER", "READ")

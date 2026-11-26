@@ -57,6 +57,12 @@ class FakePermissionsClient : PermissionsClient {
         return accesos[snippetId]?.get(userId)?.let { RoleResult.Found(it) } ?: RoleResult.None
     }
 
+    override fun sharedWith(userId: String): SharedSnippetsResult {
+        failWith?.let { return SharedSnippetsResult.Failed(it) }
+
+        return SharedSnippetsResult.Found(accesos.filterValues { it[userId] == "READ" }.keys.toList())
+    }
+
     fun ownerOf(snippetId: UUID): String? = accesos[snippetId]?.entries?.firstOrNull { it.value == "OWNER" }?.key
 
     fun rolDe(

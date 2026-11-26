@@ -65,6 +65,42 @@ class HttpPrintScriptClient(
             throw exception
         }
 
+    /**
+     * A diferencia de validar, un fallo de PrintScript vuelve como resultado y no como excepción:
+     * correr un test no puede tirar abajo el pedido, el usuario tiene que ver "no se pudo correr".
+     */
+    override fun execute(
+        version: String,
+        content: String,
+        inputs: List<String>,
+    ): ExecutionResult =
+        try {
+            val response =
+                restClient
+                    .post()
+                    .uri("/execute")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(ExecutionRequestBody(content, version, inputs))
+                    .retrieve()
+                    .body<ExecutionResponse>()
+
+            response?.let { ExecutionResult.Ran(it.outputs, it.error?.message) } ?: run {
+                log.warn("PrintScript respondió POST /execute sin body")
+                ExecutionResult.Failed(EXECUTE_FAILED)
+            }
+        } catch (exception: HttpClientErrorException) {
+            if (exception.statusCode.value() in REJECTED_STATUSES) {
+                ExecutionResult.Rejected(rejectionDetail(exception) ?: DEFAULT_REJECTION)
+            } else {
+                log.warn(EXECUTE_FAILED_LOG, exception)
+                ExecutionResult.Failed(EXECUTE_FAILED)
+            }
+        } catch (exception: RestClientException) {
+            // El detalle va al log y no al resultado: el mensaje de la excepción trae la URL y el puerto internos
+            log.warn(EXECUTE_FAILED_LOG, exception)
+            ExecutionResult.Failed(EXECUTE_FAILED)
+        }
+
     override fun versions(): VersionsResult =
         try {
             val versions =
@@ -113,8 +149,30 @@ class HttpPrintScriptClient(
         private const val VERSIONS_FAILED = "PrintScript no respondió"
 
         private const val VALIDATE_FAILED_LOG = "No se pudo validar el snippet en PrintScript"
+
+        private const val EXECUTE_FAILED = "PrintScript no respondió"
+
+        private const val EXECUTE_FAILED_LOG = "No se pudo correr el snippet en PrintScript"
     }
 }
+
+// Lo que recibe POST /execute de printscript-service
+data class ExecutionRequestBody(
+    val code: String,
+    val version: String,
+    val inputs: List<String>,
+)
+
+// Respuesta 200 de POST /execute. De SourceError solo se usa el mensaje: la línea y la columna
+// no le dicen nada a quien escribió el test, que no está mirando el código
+data class ExecutionResponse(
+    val outputs: List<String>,
+    val error: ExecutionErrorResponse? = null,
+)
+
+data class ExecutionErrorResponse(
+    val message: String,
+)
 
 // Respuesta 200 de printscript-service
 data class ValidationResponse(
