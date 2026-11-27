@@ -128,6 +128,39 @@ class SharedSnippetControllerTest(
     }
 
     @Test
+    fun `GET snippets por id dice si el que pide es el dueno`() {
+        val id = saved("auth0|ana")
+        permissions.registerReader(id, "auth0|beto")
+
+        mockMvc
+            .get("/snippets/$id") { with(jwt().jwt { it.subject("auth0|ana") }.authorities(readSnippets)) }
+            .andExpect { jsonPath("$.owned") { value(true) } }
+        mockMvc
+            .get("/snippets/$id") { with(jwt().jwt { it.subject("auth0|beto") }.authorities(readSnippets)) }
+            .andExpect { jsonPath("$.owned") { value(false) } }
+    }
+
+    @Test
+    fun `GET snippets marca como propios solo los del que pide`() {
+        // Usuarios propios del test: el listado cuenta todo lo que tienen, y otros tests usan ana y beto
+        val carla = "auth0|carla-${UUID.randomUUID()}"
+        val dani = "auth0|dani-${UUID.randomUUID()}"
+        saved(carla)
+        val deDani = saved(dani)
+        permissions.registerReader(deDani, carla)
+        val comoCarla = jwt().jwt { it.subject(carla) }.authorities(readSnippets)
+
+        mockMvc.get("/snippets?relation=owned") { with(comoCarla) }.andExpect {
+            jsonPath("$.count") { value(1) }
+            jsonPath("$.snippets[0].owned") { value(true) }
+        }
+        mockMvc.get("/snippets?relation=shared") { with(comoCarla) }.andExpect {
+            jsonPath("$.count") { value(1) }
+            jsonPath("$.snippets[0].owned") { value(false) }
+        }
+    }
+
+    @Test
     fun `GET snippets con una relation que no existe responde 400`() {
         mockMvc
             .get("/snippets?relation=amigos") {
@@ -190,7 +223,7 @@ class SharedSnippetControllerTest(
             .andExpect { status { isBadGateway() } }
     }
 
-    // Un snippet de ana, con su contenido en el asset service
+    // Un snippet de ese dueño, con su contenido en el asset service
     private fun saved(ownerId: String): UUID {
         val id = UUID.randomUUID()
         asset.put(id, "println(1);")
