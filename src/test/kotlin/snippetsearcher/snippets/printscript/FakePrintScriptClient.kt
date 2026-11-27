@@ -19,7 +19,9 @@ class FakePrintScriptClient : PrintScriptClient {
     var rulesResult: RulesResult = RulesResult.Found(emptyList())
     var rulesValidationResult: RulesValidationResult = RulesValidationResult.Valid
     var lintResult: LintResult = LintResult.Linted(emptyList())
-    var formatResult: FormatResult = FormatResult.Formatted("")
+
+    // Sin cargar, devuelve el mismo contenido que recibió: un test que no lo configura ve el snippet original
+    var formatResult: FormatResult? = null
 
     // El último tipo de reglas pedido: para probar que cada ruta pide el suyo
     var lastRuleKind: RuleKind? = null
@@ -93,7 +95,7 @@ class FakePrintScriptClient : PrintScriptClient {
         lastVersion = version
         lastContent = content
         lastFormatRules = rules
-        return formatResult
+        return formatResult ?: FormatResult.Formatted(content)
     }
 
     // Deja el fake como recién creado, para que ningún test dependa de lo que dejó el anterior
@@ -104,7 +106,7 @@ class FakePrintScriptClient : PrintScriptClient {
         rulesResult = RulesResult.Found(emptyList())
         rulesValidationResult = RulesValidationResult.Valid
         lintResult = LintResult.Linted(emptyList())
-        formatResult = FormatResult.Formatted("")
+        formatResult = null
         lastRuleKind = null
         lastValidatedRules = null
         lastLintRules = null
