@@ -28,6 +28,7 @@ class SnippetWriter(
     private val languages: LanguageCatalog,
     private val assetClient: AssetClient,
     private val permissionsClient: PermissionsClient,
+    private val linter: SnippetLinter,
     transactionManager: PlatformTransactionManager,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -94,30 +95,37 @@ class SnippetWriter(
         ownerId: String,
         id: UUID,
         changes: NewSnippet,
-    ): UpdateSnippetResult =
-        checkNotNull(
-            transactions.execute<UpdateSnippetResult> { status ->
-                val snippet = repository.findByIdAndOwnerId(id, ownerId)
-                if (snippet == null) {
-                    // Pudo borrarse mientras se validaba el código
-                    UpdateSnippetResult.NotFound
-                } else {
-                    snippet.name = changes.name
-                    snippet.description = changes.description
-                    snippet.language = changes.language
-                    snippet.version = changes.version
-                    repository.saveAndFlush(snippet)
+    ): UpdateSnippetResult {
+        val result =
+            checkNotNull(
+                transactions.execute<UpdateSnippetResult> { status ->
+                    val snippet = repository.findByIdAndOwnerId(id, ownerId)
+                    if (snippet == null) {
+                        // Pudo borrarse mientras se validaba el código
+                        UpdateSnippetResult.NotFound
+                    } else {
+                        snippet.name = changes.name
+                        snippet.description = changes.description
+                        snippet.language = changes.language
+                        snippet.version = changes.version
+                        // Hasta lintear el contenido nuevo, el estado del viejo no vale
+                        snippet.lintStatus = LintStatus.PENDING
+                        repository.saveAndFlush(snippet)
 
-                    when (val saved = assetClient.put(id, changes.content)) {
-                        is SaveContentResult.Failed -> {
-                            status.setRollbackOnly()
-                            UpdateSnippetResult.ContentNotSaved(saved.message)
+                        when (val saved = assetClient.put(id, changes.content)) {
+                            is SaveContentResult.Failed -> {
+                                status.setRollbackOnly()
+                                UpdateSnippetResult.ContentNotSaved(saved.message)
+                            }
+                            is SaveContentResult.Saved -> UpdateSnippetResult.Updated(snippet)
                         }
-                        is SaveContentResult.Saved -> UpdateSnippetResult.Updated(snippet)
                     }
-                }
-            },
-        )
+                },
+            )
+        // Después del commit y fuera de la transacción: no se retiene una conexión esperando al lenguaje
+        if (result is UpdateSnippetResult.Updated) linter.lint(result.snippet, changes.content)
+        return result
+    }
 
     /**
      * Contenido, dueño y recién al final la fila.
@@ -183,6 +191,7 @@ class SnippetWriter(
             }
         // Cambio de estado: se creó algo. El "quién" sale del MDC
         log.info("Snippet creado: id={} lenguaje={} version={}", guardado.id, guardado.language, guardado.version)
+        linter.lint(guardado, newSnippet.content)
         return CreateSnippetResult.Created(guardado)
     }
 
