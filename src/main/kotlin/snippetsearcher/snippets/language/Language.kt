@@ -24,4 +24,10 @@ interface Language {
         content: String,
         rules: Map<String, Any>,
     ): LintResult
+
+    fun format(
+        version: String,
+        content: String,
+        rules: Map<String, Any>,
+    ): FormatResult
 }

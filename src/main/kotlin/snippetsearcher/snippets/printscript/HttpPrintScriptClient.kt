@@ -8,6 +8,7 @@ import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
 import snippetsearcher.snippets.http.timedRestClient
+import snippetsearcher.snippets.language.FormatResult
 import snippetsearcher.snippets.language.LintResult
 import snippetsearcher.snippets.language.LintViolation
 import snippetsearcher.snippets.language.RuleDefinition
@@ -225,6 +226,53 @@ class HttpPrintScriptClient(
             LintResult.Failed(LINT_FAILED)
         }
 
+    /**
+     * Como lint: cualquier fallo vuelve como resultado y no como excepción. Quien llama decide qué
+     * mostrar si no se pudo formatear.
+     */
+    override fun format(
+        version: String,
+        content: String,
+        rules: Map<String, Any>,
+    ): FormatResult =
+        try {
+            val response =
+                restClient
+                    .post()
+                    .uri("/format")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(mapOf("code" to content, "version" to version, "rules" to rules))
+                    .retrieve()
+                    .body<FormatResponse>()
+
+            when {
+                response == null -> {
+                    log.warn("PrintScript respondió POST /format sin body")
+                    FormatResult.Failed(FORMAT_FAILED)
+                }
+                // PrintScript no pudo analizar el código: lo formateado hasta ahí no sirve, por eso no lo manda
+                response.error != null ->
+                    FormatResult.Rejected(response.error.message?.takeUnless { it.isBlank() } ?: DEFAULT_REJECTION)
+                response.formatted == null -> {
+                    log.warn("PrintScript respondió POST /format sin error y sin el código formateado")
+                    FormatResult.Failed(FORMAT_FAILED)
+                }
+                else -> FormatResult.Formatted(response.formatted)
+            }
+        } catch (exception: HttpClientErrorException) {
+            if (exception.statusCode.value() in REJECTED_STATUSES) {
+                FormatResult.Rejected(rejection(exception).detailOrDefault())
+            } else {
+                log.warn(FORMAT_FAILED_LOG, exception)
+                FormatResult.Failed(FORMAT_FAILED)
+            }
+        } catch (exception: RestClientException) {
+            // Un 5xx, un timeout o PrintScript caído. El detalle va al log y no al resultado:
+            // el mensaje de la excepción trae la URL y el puerto internos
+            log.warn(FORMAT_FAILED_LOG, exception)
+            FormatResult.Failed(FORMAT_FAILED)
+        }
+
     private fun segmentOf(kind: RuleKind): String =
         when (kind) {
             RuleKind.FORMAT -> "format"
@@ -271,6 +319,10 @@ class HttpPrintScriptClient(
         private const val LINT_FAILED = "No se pudo lintear el snippet"
 
         private const val LINT_FAILED_LOG = "No se pudo lintear el snippet en PrintScript"
+
+        private const val FORMAT_FAILED = "No se pudo formatear el snippet"
+
+        private const val FORMAT_FAILED_LOG = "No se pudo formatear el snippet en PrintScript"
     }
 }
 
@@ -343,6 +395,17 @@ data class LintViolationResponse(
 )
 
 data class LintErrorResponse(
+    val message: String? = null,
+)
+
+// Respuesta 200 de POST /format de printscript-service. formatted es null cuando hay error.
+// Se ignora ignoredRules: no lo usamos
+data class FormatResponse(
+    val formatted: String? = null,
+    val error: FormatErrorResponse? = null,
+)
+
+data class FormatErrorResponse(
     val message: String? = null,
 )
 

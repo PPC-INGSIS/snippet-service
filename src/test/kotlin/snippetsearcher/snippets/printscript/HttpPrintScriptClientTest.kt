@@ -13,6 +13,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.HttpServerErrorException
 import org.springframework.web.client.ResourceAccessException
+import snippetsearcher.snippets.language.FormatResult
 import snippetsearcher.snippets.language.LintResult
 import snippetsearcher.snippets.language.LintViolation
 import snippetsearcher.snippets.language.RuleDefinition
@@ -58,6 +59,10 @@ class HttpPrintScriptClientTest {
             respond(exchange)
         }
         server.createContext("/lint") { exchange ->
+            receivedBody = exchange.requestBody.readAllBytes().decodeToString()
+            respond(exchange)
+        }
+        server.createContext("/format") { exchange ->
             receivedBody = exchange.requestBody.readAllBytes().decodeToString()
             respond(exchange)
         }
@@ -624,6 +629,107 @@ class HttpPrintScriptClientTest {
             }
 
         assertEquals("No se pudo lintear el snippet en PrintScript", warns.single().formattedMessage)
+    }
+
+    @Test
+    fun `format manda el codigo, la version y las reglas a format con el token`() {
+        response = """{"formatted":"let a: number = 1;\n","error":null,"ignoredRules":[]}"""
+
+        client().format("1.1", "let a:number=1;", mapOf("space-before-colon" to false))
+
+        assertEquals(
+            """{"code":"let a:number=1;","version":"1.1","rules":{"space-before-colon":false}}""",
+            receivedBody,
+        )
+        assertEquals("Bearer token-de-prueba", receivedAuthorization)
+    }
+
+    @Test
+    fun `format devuelve el codigo formateado`() {
+        response = """{"formatted":"let a: number = 1;\n","error":null,"ignoredRules":[]}"""
+
+        val result = client().format("1.1", "let a:number=1;", emptyMap())
+
+        assertEquals(FormatResult.Formatted("let a: number = 1;\n"), result)
+    }
+
+    @Test
+    fun `format con un 200 con error devuelve Rejected con el mensaje del error`() {
+        response =
+            """
+            {"formatted":null,"error":{"message":"Se esperaba ';'","line":1,"column":15},"ignoredRules":[]}
+            """.trimIndent()
+
+        val result = client().format("1.1", "let a: number = 1", emptyMap())
+
+        assertEquals(FormatResult.Rejected("Se esperaba ';'"), result)
+    }
+
+    @Test
+    fun `format con un 200 con error sin mensaje devuelve Rejected con el texto por defecto`() {
+        response = """{"formatted":null,"error":{"message":""},"ignoredRules":[]}"""
+
+        val result = client().format("1.1", "let a: number = 1", emptyMap())
+
+        assertEquals(FormatResult.Rejected("PrintScript rechazó el pedido"), result)
+    }
+
+    @Test
+    fun `format con un 400 de PrintScript devuelve Rejected con su detalle`() {
+        status = 400
+        contentType = "application/problem+json"
+        response = """{"title":"Bad Request","status":400,"detail":"La regla 'no-existe' no existe"}"""
+
+        val result = client().format("1.1", "let a: number = 1;", mapOf("no-existe" to true))
+
+        assertEquals(FormatResult.Rejected("La regla 'no-existe' no existe"), result)
+    }
+
+    @Test
+    fun `format con un 413 sin detail devuelve Rejected con el texto por defecto`() {
+        status = 413
+        contentType = "application/problem+json"
+        response = """{"title":"Payload Too Large","status":413}"""
+
+        val result = client().format("1.1", "let a: number = 1;", emptyMap())
+
+        assertEquals(FormatResult.Rejected("PrintScript rechazó el pedido"), result)
+    }
+
+    @Test
+    fun `format con un 500 de PrintScript devuelve Failed`() {
+        status = 500
+        contentType = "application/problem+json"
+        response = """{"title":"Internal Server Error","status":500}"""
+
+        assertIs<FormatResult.Failed>(client().format("1.1", "let a: number = 1;", emptyMap()))
+    }
+
+    @Test
+    fun `format con un 200 sin body devuelve Failed`() {
+        response = ""
+
+        assertIs<FormatResult.Failed>(client().format("1.1", "let a: number = 1;", emptyMap()))
+    }
+
+    // Sin código y sin error no hay nada que mostrar: no es un rechazo, PrintScript contestó algo inesperado
+    @Test
+    fun `format con un 200 sin codigo formateado ni error devuelve Failed`() {
+        response = """{"formatted":null,"error":null,"ignoredRules":[]}"""
+
+        assertIs<FormatResult.Failed>(client().format("1.1", "let a: number = 1;", emptyMap()))
+    }
+
+    @Test
+    fun `format con PrintScript caido se loguea y devuelve Failed sin lanzar`() {
+        server.stop(0)
+
+        val warns =
+            warnsDuring {
+                assertIs<FormatResult.Failed>(client().format("1.1", "let a: number = 1;", emptyMap()))
+            }
+
+        assertEquals("No se pudo formatear el snippet en PrintScript", warns.single().formattedMessage)
     }
 
     companion object {

@@ -1,5 +1,6 @@
 package snippetsearcher.snippets.printscript
 
+import snippetsearcher.snippets.language.FormatResult
 import snippetsearcher.snippets.language.LintResult
 import snippetsearcher.snippets.language.RuleKind
 import snippetsearcher.snippets.language.RulesResult
@@ -40,6 +41,12 @@ interface PrintScriptClient {
         content: String,
         rules: Map<String, Any>,
     ): LintResult
+
+    fun format(
+        version: String,
+        content: String,
+        rules: Map<String, Any>,
+    ): FormatResult
 }
 
 sealed interface ExecutionResult {

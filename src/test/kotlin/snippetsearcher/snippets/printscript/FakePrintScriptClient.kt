@@ -3,6 +3,7 @@ package snippetsearcher.snippets.printscript
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
+import snippetsearcher.snippets.language.FormatResult
 import snippetsearcher.snippets.language.LintResult
 import snippetsearcher.snippets.language.RuleKind
 import snippetsearcher.snippets.language.RulesResult
@@ -18,6 +19,7 @@ class FakePrintScriptClient : PrintScriptClient {
     var rulesResult: RulesResult = RulesResult.Found(emptyList())
     var rulesValidationResult: RulesValidationResult = RulesValidationResult.Valid
     var lintResult: LintResult = LintResult.Linted(emptyList())
+    var formatResult: FormatResult = FormatResult.Formatted("")
 
     // El último tipo de reglas pedido: para probar que cada ruta pide el suyo
     var lastRuleKind: RuleKind? = null
@@ -28,11 +30,14 @@ class FakePrintScriptClient : PrintScriptClient {
     // Las últimas reglas con las que se pidió lintear: para probar qué reglas se mandan
     var lastLintRules: Map<String, Any>? = null
 
-    // Con qué se pidió correr o lintear: el contenido del snippet y, al correr, los inputs del test
+    // Las últimas reglas con las que se pidió formatear: para probar qué reglas se mandan
+    var lastFormatRules: Map<String, Any>? = null
+
+    // Con qué se pidió correr, lintear o formatear: el contenido del snippet y, al correr, los inputs del test
     var lastInputs: List<String>? = null
     var lastContent: String? = null
 
-    // La última versión con la que se pidió validar, correr o lintear: para probar que se usa la que manda el usuario
+    // La última versión con la que se pidió validar, correr, lintear o formatear: para probar cuál se usa
     var lastVersion: String? = null
 
     override fun validate(
@@ -80,6 +85,17 @@ class FakePrintScriptClient : PrintScriptClient {
         return lintResult
     }
 
+    override fun format(
+        version: String,
+        content: String,
+        rules: Map<String, Any>,
+    ): FormatResult {
+        lastVersion = version
+        lastContent = content
+        lastFormatRules = rules
+        return formatResult
+    }
+
     // Deja el fake como recién creado, para que ningún test dependa de lo que dejó el anterior
     fun clear() {
         result = ValidationResult.Checked(emptyList())
@@ -88,9 +104,11 @@ class FakePrintScriptClient : PrintScriptClient {
         rulesResult = RulesResult.Found(emptyList())
         rulesValidationResult = RulesValidationResult.Valid
         lintResult = LintResult.Linted(emptyList())
+        formatResult = FormatResult.Formatted("")
         lastRuleKind = null
         lastValidatedRules = null
         lastLintRules = null
+        lastFormatRules = null
         lastVersion = null
         lastContent = null
         lastInputs = null
