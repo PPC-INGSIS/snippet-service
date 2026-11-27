@@ -16,6 +16,9 @@ class LanguageCatalog(
     fun extensionOf(language: String): String =
         languages.firstOrNull { it.name.equals(language, ignoreCase = true) }?.extension.orEmpty()
 
+    // Exacto y no ignorando mayúsculas: la UI manda el nombre tal como lo recibió de GET /languages
+    fun find(name: String): Language? = languages.firstOrNull { it.name == name }
+
     fun all(): LanguagesResult {
         val available =
             languages.map { language ->

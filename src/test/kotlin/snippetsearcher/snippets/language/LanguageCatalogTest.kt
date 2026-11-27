@@ -1,19 +1,27 @@
 package snippetsearcher.snippets.language
 
 import org.junit.jupiter.api.Test
+import snippetsearcher.snippets.printscript.ValidationResult
 import snippetsearcher.snippets.printscript.VersionsResult
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 
 class LanguageCatalogTest {
     private fun language(
         name: String,
-        extension: String,
-        versions: VersionsResult,
+        extension: String = "ext",
+        versions: VersionsResult = VersionsResult.Found(emptyList()),
     ) = object : Language {
         override val name = name
         override val extension = extension
 
         override fun versions() = versions
+
+        override fun validate(
+            version: String,
+            content: String,
+        ) = ValidationResult.Checked(emptyList())
     }
 
     @Test
@@ -47,5 +55,20 @@ class LanguageCatalogTest {
             )
 
         assertEquals(LanguagesResult.Failed, catalog.all())
+    }
+
+    @Test
+    fun `encuentra un lenguaje por su nombre`() {
+        val printscript = language("printscript")
+        val catalog = LanguageCatalog(listOf(language("otro"), printscript))
+
+        assertSame(printscript, catalog.find("printscript"))
+    }
+
+    @Test
+    fun `un nombre que no esta en el catalogo no encuentra nada`() {
+        val catalog = LanguageCatalog(listOf(language("printscript")))
+
+        assertNull(catalog.find("python"))
     }
 }
