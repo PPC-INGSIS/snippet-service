@@ -8,6 +8,9 @@ import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
 import snippetsearcher.snippets.http.timedRestClient
+import snippetsearcher.snippets.language.RuleDefinition
+import snippetsearcher.snippets.language.RuleKind
+import snippetsearcher.snippets.language.RulesResult
 import snippetsearcher.snippets.language.ValidationError
 import snippetsearcher.snippets.language.ValidationResult
 import snippetsearcher.snippets.language.VersionsResult
@@ -115,6 +118,35 @@ class HttpPrintScriptClient(
             VersionsResult.Failed(VERSIONS_FAILED)
         }
 
+    // Sin version: PrintScript devuelve las de la última versión
+    override fun rules(kind: RuleKind): RulesResult {
+        val segment =
+            when (kind) {
+                RuleKind.FORMAT -> "format"
+                RuleKind.LINT -> "lint"
+            }
+        return try {
+            val rules =
+                restClient
+                    .get()
+                    .uri("/rules/{kind}", segment)
+                    .retrieve()
+                    .body<RulesResponse>()
+                    ?.rules
+                    ?.map { RuleDefinition(it.id, it.description, it.since, it.schema.default) }
+
+            if (rules != null) {
+                RulesResult.Found(rules)
+            } else {
+                log.warn("PrintScript respondió GET /rules/{} sin body", segment)
+                RulesResult.Failed(RULES_FAILED)
+            }
+        } catch (exception: RestClientException) {
+            log.warn("No se pudieron obtener las reglas de PrintScript", exception)
+            RulesResult.Failed(RULES_FAILED)
+        }
+    }
+
     private fun rejectionDetail(exception: HttpClientErrorException): String? =
         try {
             exception
@@ -138,6 +170,8 @@ class HttpPrintScriptClient(
         private const val DEFAULT_REJECTION = "PrintScript rechazó el pedido"
 
         private const val VERSIONS_FAILED = "PrintScript no respondió"
+
+        private const val RULES_FAILED = "PrintScript no respondió"
 
         private const val VALIDATE_FAILED_LOG = "No se pudo validar el snippet en PrintScript"
 
@@ -184,6 +218,22 @@ data class VersionsResponse(
 
 data class VersionResponse(
     val id: String,
+)
+
+// Respuesta de GET /rules/{kind} de printscript-service. Se ignoran version y el resto del schema: no los usamos
+data class RulesResponse(
+    val rules: List<RuleResponse>,
+)
+
+data class RuleResponse(
+    val id: String,
+    val description: String,
+    val since: String,
+    val schema: RuleSchemaResponse,
+)
+
+data class RuleSchemaResponse(
+    val default: Any? = null,
 )
 
 // Respuesta 400 o 413 de printscript-service, en formato Problem Details (RFC 9457)

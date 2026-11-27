@@ -1,5 +1,7 @@
 package snippetsearcher.snippets.printscript
 
+import snippetsearcher.snippets.language.RuleKind
+import snippetsearcher.snippets.language.RulesResult
 import snippetsearcher.snippets.language.ValidationResult
 import snippetsearcher.snippets.language.VersionsResult
 
@@ -23,6 +25,8 @@ interface PrintScriptClient {
     ): ExecutionResult
 
     fun versions(): VersionsResult
+
+    fun rules(kind: RuleKind): RulesResult
 }
 
 sealed interface ExecutionResult {
