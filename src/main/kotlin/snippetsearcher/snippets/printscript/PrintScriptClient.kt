@@ -44,12 +44,12 @@ sealed interface ExecutionResult {
 }
 
 sealed interface ValidationResult {
-    // PrintScript revisó el código. Lista vacía = válido
+    // El lenguaje revisó el código. Lista vacía = válido
     data class Checked(
         val errors: List<ValidationError>,
     ) : ValidationResult
 
-    // PrintScript rechazó el pedido sin revisar el código (por ejemplo, la versión no existe)
+    // El pedido se rechazó sin revisar el código (por ejemplo, el lenguaje o la versión no existen)
     data class Rejected(
         val message: String,
     ) : ValidationResult

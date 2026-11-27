@@ -11,18 +11,18 @@ import snippetsearcher.snippets.asset.AssetClient
 import snippetsearcher.snippets.asset.ContentResult
 import snippetsearcher.snippets.asset.DeleteContentResult
 import snippetsearcher.snippets.asset.SaveContentResult
+import snippetsearcher.snippets.language.LanguageCatalog
 import snippetsearcher.snippets.permissions.DeleteAccessesResult
 import snippetsearcher.snippets.permissions.PermissionsClient
 import snippetsearcher.snippets.permissions.RegisterAccessResult
 import snippetsearcher.snippets.permissions.SharedSnippetsResult
-import snippetsearcher.snippets.printscript.PrintScriptClient
 import snippetsearcher.snippets.printscript.ValidationResult
 import java.util.UUID
 
 @Service
 class SnippetService(
     private val repository: SnippetRepository,
-    private val printScriptClient: PrintScriptClient,
+    private val languages: LanguageCatalog,
     private val assetClient: AssetClient,
     private val permissionsClient: PermissionsClient,
     private val access: SnippetAccess,
@@ -38,10 +38,10 @@ class SnippetService(
         ownerId: String,
         newSnippet: NewSnippet,
     ): CreateSnippetResult =
-        when (val validation = printScriptClient.validate(newSnippet.version, newSnippet.content)) {
+        when (val validation = validate(newSnippet)) {
             // El quién y el trace id no van acá: los pone el MDC en cada línea
             is ValidationResult.Rejected -> {
-                log.info("PrintScript rechazó el pedido: {}", validation.message)
+                log.info("Se rechazó el pedido: {}", validation.message)
                 CreateSnippetResult.Rejected(validation.message)
             }
             is ValidationResult.Checked ->
@@ -215,9 +215,9 @@ class SnippetService(
     /**
      * Reemplaza todos los datos del snippet del dueño y su contenido.
      *
-     * Primero el dueño: a quien no lo es no hay que revisarle el código ni molestar a PrintScript.
+     * Primero el dueño: a quien no lo es no hay que revisarle el código ni molestar al servicio del lenguaje.
      * La validación va antes y fuera de la transacción, para no retener una conexión de la base
-     * mientras se espera a PrintScript.
+     * mientras se espera al servicio del lenguaje.
      */
     fun update(
         ownerId: String,
@@ -226,7 +226,7 @@ class SnippetService(
     ): UpdateSnippetResult {
         if (repository.findByIdAndOwnerId(id, ownerId) == null) return UpdateSnippetResult.NotFound
 
-        return when (val validation = printScriptClient.validate(changes.version, changes.content)) {
+        return when (val validation = validate(changes)) {
             is ValidationResult.Rejected -> UpdateSnippetResult.Rejected(validation.message)
             is ValidationResult.Checked ->
                 if (validation.errors.isNotEmpty()) {
@@ -236,6 +236,10 @@ class SnippetService(
                 }
         }
     }
+
+    private fun validate(snippet: NewSnippet): ValidationResult =
+        languages.find(snippet.language)?.validate(snippet.version, snippet.content)
+            ?: ValidationResult.Rejected("El lenguaje '${snippet.language}' no existe")
 
     /**
      * La fila se actualiza y se manda a la base (flush) **antes** de guardar el contenido, y el commit
