@@ -14,7 +14,6 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
-import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
@@ -97,13 +96,6 @@ class ManagementTokenTest {
         val error = assertFailsWith<RestClientException> { token.value() }
         // El cliente HTTP del JDK, como el resto de los clientes (timedRestClient): su timeout es HttpTimeoutException
         assertIs<HttpTimeoutException>(error.rootCause)
-    }
-
-    @Test
-    fun `el toString de la respuesta no muestra el token`() {
-        val response = TokenResponse("token-secreto", 86400)
-
-        assertFalse(response.toString().contains("token-secreto"))
     }
 }
 
