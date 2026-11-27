@@ -8,6 +8,8 @@ import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
 import snippetsearcher.snippets.http.timedRestClient
+import snippetsearcher.snippets.language.LintResult
+import snippetsearcher.snippets.language.LintViolation
 import snippetsearcher.snippets.language.RuleDefinition
 import snippetsearcher.snippets.language.RuleKind
 import snippetsearcher.snippets.language.RulesResult
@@ -178,6 +180,51 @@ class HttpPrintScriptClient(
             RulesValidationResult.Failed(VALIDATE_RULES_FAILED)
         }
 
+    /**
+     * A diferencia de validar, cualquier fallo vuelve como resultado y no como excepción:
+     * que no se pueda lintear no puede tirar abajo el pedido de quien lo llama.
+     */
+    override fun lint(
+        version: String,
+        content: String,
+        rules: Map<String, Any>,
+    ): LintResult =
+        try {
+            val response =
+                restClient
+                    .post()
+                    .uri("/lint")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(mapOf("code" to content, "version" to version, "rules" to rules))
+                    .retrieve()
+                    .body<LintResponse>()
+
+            when {
+                response == null -> {
+                    log.warn("PrintScript respondió POST /lint sin body")
+                    LintResult.Failed(LINT_FAILED)
+                }
+                response.error != null ->
+                    LintResult.Rejected(response.error.message?.takeUnless { it.isBlank() } ?: DEFAULT_REJECTION)
+                else ->
+                    LintResult.Linted(
+                        response.violations.map { LintViolation(it.rule, it.message, it.line, it.column) },
+                    )
+            }
+        } catch (exception: HttpClientErrorException) {
+            if (exception.statusCode.value() in REJECTED_STATUSES) {
+                LintResult.Rejected(rejection(exception).detailOrDefault())
+            } else {
+                log.warn(LINT_FAILED_LOG, exception)
+                LintResult.Failed(LINT_FAILED)
+            }
+        } catch (exception: RestClientException) {
+            // Un 5xx, un timeout o PrintScript caído. El detalle va al log y no al resultado:
+            // el mensaje de la excepción trae la URL y el puerto internos
+            log.warn(LINT_FAILED_LOG, exception)
+            LintResult.Failed(LINT_FAILED)
+        }
+
     private fun segmentOf(kind: RuleKind): String =
         when (kind) {
             RuleKind.FORMAT -> "format"
@@ -220,6 +267,10 @@ class HttpPrintScriptClient(
         private const val EXECUTE_FAILED = "PrintScript no respondió"
 
         private const val EXECUTE_FAILED_LOG = "No se pudo correr el snippet en PrintScript"
+
+        private const val LINT_FAILED = "No se pudo lintear el snippet"
+
+        private const val LINT_FAILED_LOG = "No se pudo lintear el snippet en PrintScript"
     }
 }
 
@@ -276,6 +327,23 @@ data class RuleResponse(
 
 data class RuleSchemaResponse(
     val default: Any? = null,
+)
+
+// Respuesta 200 de POST /lint de printscript-service. Se ignoran severity e ignoredRules: no los usamos
+data class LintResponse(
+    val violations: List<LintViolationResponse>,
+    val error: LintErrorResponse? = null,
+)
+
+data class LintViolationResponse(
+    val rule: String,
+    val message: String,
+    val line: Int? = null,
+    val column: Int? = null,
+)
+
+data class LintErrorResponse(
+    val message: String? = null,
 )
 
 // Respuesta 400 o 413 de printscript-service, en formato Problem Details (RFC 9457).

@@ -13,6 +13,8 @@ import org.slf4j.LoggerFactory
 import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.HttpServerErrorException
 import org.springframework.web.client.ResourceAccessException
+import snippetsearcher.snippets.language.LintResult
+import snippetsearcher.snippets.language.LintViolation
 import snippetsearcher.snippets.language.RuleDefinition
 import snippetsearcher.snippets.language.RuleKind
 import snippetsearcher.snippets.language.RulesResult
@@ -52,6 +54,10 @@ class HttpPrintScriptClientTest {
         server.createContext("/versions") { exchange -> respond(exchange) }
         server.createContext("/rules") { exchange ->
             receivedUri = exchange.requestURI
+            receivedBody = exchange.requestBody.readAllBytes().decodeToString()
+            respond(exchange)
+        }
+        server.createContext("/lint") { exchange ->
             receivedBody = exchange.requestBody.readAllBytes().decodeToString()
             respond(exchange)
         }
@@ -523,7 +529,106 @@ class HttpPrintScriptClientTest {
         assertFailsWith<ResourceAccessException> { client(Duration.ofMillis(200)).validate("1.1", "println(1);") }
     }
 
+    @Test
+    fun `lint manda el codigo, la version y las reglas a lint con el token`() {
+        response = LINT_OK
+
+        client().lint("1.1", "let a: number = 1;", mapOf("identifier-naming" to "camel-case"))
+
+        assertEquals(
+            """{"code":"let a: number = 1;","version":"1.1","rules":{"identifier-naming":"camel-case"}}""",
+            receivedBody,
+        )
+        assertEquals("Bearer token-de-prueba", receivedAuthorization)
+    }
+
+    @Test
+    fun `lint sin violaciones devuelve Linted vacio`() {
+        response = LINT_OK
+
+        assertEquals(LintResult.Linted(emptyList()), client().lint("1.1", "let a: number = 1;", emptyMap()))
+    }
+
+    @Test
+    fun `lint convierte la regla, el mensaje, la linea y la columna de cada violacion`() {
+        response =
+            """
+            {"violations":[{"rule":"identifier-naming","message":"'my_var' no está en camelCase",
+              "line":1,"column":5,"severity":"WARNING"}],"error":null,"ignoredRules":[]}
+            """.trimIndent()
+
+        val result = client().lint("1.1", "let my_var: number = 1;", mapOf("identifier-naming" to "camel-case"))
+
+        val expected = LintViolation("identifier-naming", "'my_var' no está en camelCase", 1, 5)
+        assertEquals(LintResult.Linted(listOf(expected)), result)
+    }
+
+    @Test
+    fun `lint con un 200 con error devuelve Rejected con el mensaje del error`() {
+        response =
+            """
+            {"violations":[],"error":{"message":"El código tiene demasiados niveles de anidamiento",
+              "line":null,"column":null},"ignoredRules":[]}
+            """.trimIndent()
+
+        val result = client().lint("1.1", "println(((((1)))));", emptyMap())
+
+        assertEquals(LintResult.Rejected("El código tiene demasiados niveles de anidamiento"), result)
+    }
+
+    @Test
+    fun `lint con un 400 de PrintScript devuelve Rejected con su detalle`() {
+        status = 400
+        contentType = "application/problem+json"
+        response = """{"title":"Bad Request","status":400,"detail":"La versión '9.9' no existe"}"""
+
+        val result = client().lint("9.9", "let a: number = 1;", emptyMap())
+
+        assertEquals(LintResult.Rejected("La versión '9.9' no existe"), result)
+    }
+
+    @Test
+    fun `lint con un 413 sin detail devuelve Rejected con el texto por defecto`() {
+        status = 413
+        contentType = "application/problem+json"
+        response = """{"title":"Payload Too Large","status":413}"""
+
+        val result = client().lint("1.1", "let a: number = 1;", emptyMap())
+
+        assertEquals(LintResult.Rejected("PrintScript rechazó el pedido"), result)
+    }
+
+    @Test
+    fun `lint con un 500 de PrintScript devuelve Failed`() {
+        status = 500
+        contentType = "application/problem+json"
+        response = """{"title":"Internal Server Error","status":500}"""
+
+        assertIs<LintResult.Failed>(client().lint("1.1", "let a: number = 1;", emptyMap()))
+    }
+
+    @Test
+    fun `lint con un 200 sin body devuelve Failed`() {
+        response = ""
+
+        assertIs<LintResult.Failed>(client().lint("1.1", "let a: number = 1;", emptyMap()))
+    }
+
+    @Test
+    fun `lint con PrintScript caido se loguea y devuelve Failed sin lanzar`() {
+        server.stop(0)
+
+        val warns =
+            warnsDuring {
+                assertIs<LintResult.Failed>(client().lint("1.1", "let a: number = 1;", emptyMap()))
+            }
+
+        assertEquals("No se pudo lintear el snippet en PrintScript", warns.single().formattedMessage)
+    }
+
     companion object {
+        private const val LINT_OK = """{"violations":[],"error":null,"ignoredRules":[]}"""
+
         private val CONNECT_TIMEOUT: Duration = Duration.ofSeconds(2)
         private val READ_TIMEOUT: Duration = Duration.ofSeconds(5)
     }
