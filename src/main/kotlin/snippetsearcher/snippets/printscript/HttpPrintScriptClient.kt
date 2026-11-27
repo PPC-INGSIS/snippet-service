@@ -206,7 +206,10 @@ class HttpPrintScriptClient(
                 }
                 response.error != null ->
                     LintResult.Rejected(response.error.message?.takeUnless { it.isBlank() } ?: DEFAULT_REJECTION)
-                else -> LintResult.Linted(response.violations)
+                else ->
+                    LintResult.Linted(
+                        response.violations.map { LintViolation(it.rule, it.message, it.line, it.column) },
+                    )
             }
         } catch (exception: HttpClientErrorException) {
             if (exception.statusCode.value() in REJECTED_STATUSES) {
@@ -326,11 +329,17 @@ data class RuleSchemaResponse(
     val default: Any? = null,
 )
 
-// Respuesta 200 de POST /lint de printscript-service. Las violaciones se deserializan directo a [LintViolation].
-// Se ignoran severity e ignoredRules: no los usamos
+// Respuesta 200 de POST /lint de printscript-service. Se ignoran severity e ignoredRules: no los usamos
 data class LintResponse(
-    val violations: List<LintViolation>,
+    val violations: List<LintViolationResponse>,
     val error: LintErrorResponse? = null,
+)
+
+data class LintViolationResponse(
+    val rule: String,
+    val message: String,
+    val line: Int? = null,
+    val column: Int? = null,
 )
 
 data class LintErrorResponse(
