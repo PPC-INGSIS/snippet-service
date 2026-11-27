@@ -12,11 +12,11 @@ import snippetsearcher.snippets.asset.ContentResult
 import snippetsearcher.snippets.asset.DeleteContentResult
 import snippetsearcher.snippets.asset.SaveContentResult
 import snippetsearcher.snippets.language.LanguageCatalog
+import snippetsearcher.snippets.language.ValidationResult
 import snippetsearcher.snippets.permissions.DeleteAccessesResult
 import snippetsearcher.snippets.permissions.PermissionsClient
 import snippetsearcher.snippets.permissions.RegisterAccessResult
 import snippetsearcher.snippets.permissions.SharedSnippetsResult
-import snippetsearcher.snippets.printscript.ValidationResult
 import java.util.UUID
 
 @Service

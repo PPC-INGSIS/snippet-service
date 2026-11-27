@@ -18,12 +18,12 @@ import org.springframework.test.web.servlet.put
 import snippetsearcher.snippets.TestcontainersConfiguration
 import snippetsearcher.snippets.asset.FakeAssetClient
 import snippetsearcher.snippets.asset.FakeAssetConfiguration
+import snippetsearcher.snippets.language.ValidationError
+import snippetsearcher.snippets.language.ValidationResult
 import snippetsearcher.snippets.permissions.FakePermissionsClient
 import snippetsearcher.snippets.permissions.FakePermissionsConfiguration
 import snippetsearcher.snippets.printscript.FakePrintScriptClient
 import snippetsearcher.snippets.printscript.FakePrintScriptConfiguration
-import snippetsearcher.snippets.printscript.ValidationError
-import snippetsearcher.snippets.printscript.ValidationResult
 import java.util.UUID
 import kotlin.test.assertEquals
 

@@ -1,9 +1,9 @@
-package snippetsearcher.snippets.language
+package snippetsearcher.snippets.printscript
 
 import org.springframework.stereotype.Component
-import snippetsearcher.snippets.printscript.PrintScriptClient
-import snippetsearcher.snippets.printscript.ValidationResult
-import snippetsearcher.snippets.printscript.VersionsResult
+import snippetsearcher.snippets.language.Language
+import snippetsearcher.snippets.language.ValidationResult
+import snippetsearcher.snippets.language.VersionsResult
 
 @Component
 class PrintScriptLanguage(

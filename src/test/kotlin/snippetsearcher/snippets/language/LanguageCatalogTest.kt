@@ -1,8 +1,6 @@
 package snippetsearcher.snippets.language
 
 import org.junit.jupiter.api.Test
-import snippetsearcher.snippets.printscript.ValidationResult
-import snippetsearcher.snippets.printscript.VersionsResult
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertSame

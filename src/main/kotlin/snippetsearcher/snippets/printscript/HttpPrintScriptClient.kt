@@ -8,6 +8,9 @@ import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
 import snippetsearcher.snippets.http.timedRestClient
+import snippetsearcher.snippets.language.ValidationError
+import snippetsearcher.snippets.language.ValidationResult
+import snippetsearcher.snippets.language.VersionsResult
 import snippetsearcher.snippets.security.AccessToken
 import java.nio.charset.StandardCharsets
 import java.time.Duration
@@ -162,7 +165,14 @@ data class ExecutionErrorResponse(
     val message: String,
 )
 
-// Respuesta 200 de printscript-service
+/**
+ * Respuesta 200 de printscript-service. Los errores se deserializan directo a [ValidationError].
+ *
+ * PrintScript devuelve `line` y `column` en `null` cuando el código desborda el parser por tener
+ * demasiados niveles de anidamiento (printscript-service#42). Con `Int` no nulo, esa respuesta no se
+ * podía deserializar y el pedido terminaba en un 500 con un error de Jackson en el log, en vez del
+ * 400 con el mensaje que PrintScript sí había mandado.
+ */
 data class ValidationResponse(
     val errors: List<ValidationError>,
 )

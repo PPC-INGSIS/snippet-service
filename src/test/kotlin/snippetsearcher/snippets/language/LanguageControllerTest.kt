@@ -14,7 +14,6 @@ import org.springframework.test.web.servlet.get
 import snippetsearcher.snippets.TestcontainersConfiguration
 import snippetsearcher.snippets.printscript.FakePrintScriptClient
 import snippetsearcher.snippets.printscript.FakePrintScriptConfiguration
-import snippetsearcher.snippets.printscript.VersionsResult
 
 // Listar lenguajes es leer: los tokens de este test traen read:snippets
 private val readSnippets = SimpleGrantedAuthority("SCOPE_read:snippets")
