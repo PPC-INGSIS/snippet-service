@@ -13,8 +13,10 @@ class LanguageCatalog(
      * No pregunta versiones, así que no sale a PrintScript: la extensión es un dato del lenguaje y
      * no cambia. Por eso se puede resolver en cada respuesta sin costo.
      */
-    fun extensionOf(language: String): String =
-        languages.firstOrNull { it.name.equals(language, ignoreCase = true) }?.extension.orEmpty()
+    fun extensionOf(language: String): String = find(language)?.extension.orEmpty()
+
+    // Exacto y no ignorando mayúsculas: la UI manda el nombre tal como lo recibió de GET /languages
+    fun find(name: String): Language? = languages.firstOrNull { it.name == name }
 
     fun all(): LanguagesResult {
         val available =

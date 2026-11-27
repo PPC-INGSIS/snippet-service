@@ -196,6 +196,19 @@ class SnippetControllerTest(
     }
 
     @Test
+    fun `POST snippets con un lenguaje que no existe responde 400 con el mensaje`() {
+        mockMvc
+            .post("/snippets") {
+                with(jwt().authorities(writeSnippets))
+                contentType = MediaType.APPLICATION_JSON
+                content = body.replace("\"printscript\"", "\"python\"")
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.message") { value("El lenguaje 'python' no existe") }
+            }
+    }
+
+    @Test
     fun `GET snippets por id del dueno responde 200 con los datos y el contenido`() {
         val id = saved("auth0|ana")
 
@@ -336,6 +349,21 @@ class SnippetControllerTest(
             }.andExpect {
                 status { isBadRequest() }
                 jsonPath("$.message") { value("La versión '1.3' no existe") }
+            }
+    }
+
+    @Test
+    fun `PUT snippets con un lenguaje que no existe responde 400 con el mensaje`() {
+        val id = saved("auth0|ana")
+
+        mockMvc
+            .put("/snippets/$id") {
+                with(jwt().jwt { it.subject("auth0|ana") }.authorities(writeSnippets))
+                contentType = MediaType.APPLICATION_JSON
+                content = updateBody.replace("\"printscript\"", "\"python\"")
+            }.andExpect {
+                status { isBadRequest() }
+                jsonPath("$.message") { value("El lenguaje 'python' no existe") }
             }
     }
 
