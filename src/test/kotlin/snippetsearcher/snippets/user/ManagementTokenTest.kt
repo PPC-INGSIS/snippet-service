@@ -6,7 +6,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.web.client.RestClientException
 import java.net.InetSocketAddress
-import java.net.SocketTimeoutException
+import java.net.http.HttpTimeoutException
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -95,7 +95,8 @@ class ManagementTokenTest {
         val token = newToken(timeout = Duration.ofMillis(100))
 
         val error = assertFailsWith<RestClientException> { token.value() }
-        assertIs<SocketTimeoutException>(error.rootCause)
+        // El cliente HTTP del JDK, como el resto de los clientes (timedRestClient): su timeout es HttpTimeoutException
+        assertIs<HttpTimeoutException>(error.rootCause)
     }
 
     @Test

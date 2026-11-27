@@ -23,6 +23,7 @@ class HttpPermissionsClientTest {
 
     private var status = 201
     private var responseBody = ""
+    private var delay: Duration = Duration.ZERO
 
     private var receivedMethod: String? = null
     private var receivedPath: String? = null
@@ -56,6 +57,7 @@ class HttpPermissionsClientTest {
         receivedQuery = exchange.requestURI.query
         receivedBody = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
         receivedAuth = exchange.requestHeaders.getFirst("Authorization")
+        if (!delay.isZero) Thread.sleep(delay.toMillis())
 
         val bytes = responseBody.toByteArray(StandardCharsets.UTF_8)
         if (bytes.isNotEmpty()) exchange.responseHeaders.add("Content-Type", "application/json")
@@ -238,6 +240,20 @@ class HttpPermissionsClientTest {
         status = 500
 
         assertIs<SharedSnippetsResult.Failed>(client.sharedWith("auth0|beto"))
+    }
+
+    // Un Permisos que atiende y no contesta no puede colgar al thread para siempre.
+    // La respuesta es un rol válido a propósito: si el cliente esperara, devolvería Found, así que el
+    // único camino a Failed es el timeout. Con la respuesta por defecto (201 sin body) daría Failed aunque
+    // no cortara.
+    @Test
+    fun `un Permisos lento corta por read timeout y devuelve Failed`() {
+        status = 200
+        responseBody = """{"snippetId":"${UUID.randomUUID()}","userId":"auth0|ana","role":"READ"}"""
+        delay = Duration.ofSeconds(2)
+        val impaciente = clienteCon(Duration.ofMillis(200))
+
+        assertIs<RoleResult.Failed>(impaciente.roleOf(UUID.randomUUID(), "auth0|ana"))
     }
 
     companion object {

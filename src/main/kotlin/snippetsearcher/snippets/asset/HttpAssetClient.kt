@@ -3,13 +3,11 @@ package snippetsearcher.snippets.asset
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.MediaType
-import org.springframework.http.client.JdkClientHttpRequestFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.client.HttpClientErrorException
-import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
-import java.net.http.HttpClient
+import snippetsearcher.snippets.http.timedRestClient
 import java.nio.charset.StandardCharsets
 import java.time.Duration
 import java.util.UUID
@@ -22,17 +20,8 @@ class HttpAssetClient(
 ) : AssetClient {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    // Los dos timeouts: connect es "no me atienden" y read es "me atienden y no contestan".
-    // El connect va en el HttpClient porque el request factory solo expone el de lectura.
-    private val restClient =
-        RestClient
-            .builder()
-            .baseUrl(baseUrl)
-            .requestFactory(
-                JdkClientHttpRequestFactory(
-                    HttpClient.newBuilder().connectTimeout(connectTimeout).build(),
-                ).apply { setReadTimeout(readTimeout) },
-            ).build()
+    // Sin token: el asset service de la cátedra no autentica
+    private val restClient = timedRestClient(baseUrl, connectTimeout, readTimeout)
 
     override fun put(
         snippetId: UUID,

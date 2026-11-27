@@ -6,8 +6,8 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.springframework.web.client.RestClientException
 import java.net.InetSocketAddress
-import java.net.SocketTimeoutException
 import java.net.URLDecoder
+import java.net.http.HttpTimeoutException
 import java.time.Duration
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -153,6 +153,7 @@ class Auth0UserDirectoryTest {
 
         val error =
             assertFailsWith<RestClientException> { directory(timeout = Duration.ofMillis(100)).search("an", 0, 5) }
-        assertIs<SocketTimeoutException>(error.rootCause)
+        // El cliente HTTP del JDK, como el resto de los clientes (timedRestClient): su timeout es HttpTimeoutException
+        assertIs<HttpTimeoutException>(error.rootCause)
     }
 }
