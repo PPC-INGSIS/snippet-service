@@ -8,7 +8,7 @@ import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
 import snippetsearcher.snippets.http.timedRestClient
-import snippetsearcher.snippets.security.AccessToken
+import snippetsearcher.snippets.security.UserAccessToken
 import java.time.Duration
 import java.util.UUID
 
@@ -17,7 +17,9 @@ class HttpPermissionsClient(
     @Value("\${permissions.url}") baseUrl: String,
     @Value("\${permissions.connect-timeout}") connectTimeout: Duration,
     @Value("\${permissions.read-timeout}") readTimeout: Duration,
-    accessToken: AccessToken,
+    // El del usuario y no el AccessToken @Primary: Permisos autoriza por el sub, y el del token de servicio
+    // no es dueño de nada. Sin usuario en el hilo falla con ese error, y no con un 403 que parece una caída
+    accessToken: UserAccessToken,
 ) : PermissionsClient {
     private val log = LoggerFactory.getLogger(javaClass)
 

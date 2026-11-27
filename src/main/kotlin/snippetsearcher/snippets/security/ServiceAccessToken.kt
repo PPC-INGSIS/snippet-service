@@ -2,6 +2,7 @@ package snippetsearcher.snippets.security
 
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import snippetsearcher.snippets.auth0.AUTH0_TIMEOUT
 import snippetsearcher.snippets.auth0.ClientCredentialsToken
 import java.time.Clock
 import java.time.Duration
@@ -13,8 +14,9 @@ import java.time.Duration
  * - Flujo Client Credentials con la audiencia de nuestra API: "sin usuario, un servicio habla con otra
  *   API" (presentación de Auth0, diap. 41).
  * - Solo tiene `read:snippets`, que es lo que pide PrintScript. Con Permisos no sirve: autoriza por el
- *   `sub`, y el de este token (`<client-id>@clients`) no es dueño de nada. Los trabajos sin usuario no
- *   le hablan a Permisos: ya saben de qué snippet se trata y de quién es (#50).
+ *   `sub`, y el de este token (`<client-id>@clients`) no es dueño de nada. Por eso HttpPermissionsClient
+ *   recibe UserAccessToken y nunca este. Los trabajos sin usuario no le hablan a Permisos: ya saben de
+ *   qué snippet se trata y de quién es (#50).
  */
 @Component
 class ServiceAccessToken(
@@ -28,9 +30,4 @@ class ServiceAccessToken(
     private val token = ClientCredentialsToken(url, audience, clientId, clientSecret, clock, timeout)
 
     override fun value(): String = token.value()
-
-    private companion object {
-        // Lo mismo que se le espera a Auth0 para la Management API
-        val AUTH0_TIMEOUT: Duration = Duration.ofSeconds(5)
-    }
 }
