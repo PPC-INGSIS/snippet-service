@@ -4,18 +4,23 @@ import com.jayway.jsonpath.JsonPath
 import org.hamcrest.Matchers.containsString
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.ArgumentMatchers.any
+import org.mockito.Mockito.doThrow
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.context.annotation.Import
+import org.springframework.dao.DataAccessResourceFailureException
 import org.springframework.http.MediaType
 import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import org.springframework.test.web.servlet.put
+import org.springframework.transaction.CannotCreateTransactionException
 import snippetsearcher.snippets.TestcontainersConfiguration
 import snippetsearcher.snippets.asset.FakeAssetClient
 import snippetsearcher.snippets.asset.FakeAssetConfiguration
@@ -36,7 +41,8 @@ import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-// Mismos @Import que SnippetControllerTest: Spring reusa ese contexto en vez de levantar otro
+// El repositorio es un spy para poder hacer fallar el guardado del estado. El resto de las llamadas son las reales
+@MockitoSpyBean(types = [SnippetRepository::class])
 @Import(
     TestcontainersConfiguration::class,
     FakePrintScriptConfiguration::class,
@@ -223,6 +229,35 @@ class SnippetLintTest(
     }
 
     @Test
+    fun `si la base falla al guardar el estado el snippet se crea igual y queda pending`() {
+        failLintStatusUpdatesWith(DataAccessResourceFailureException("connection reset"))
+
+        val id =
+            create()
+                .andExpect {
+                    status { isCreated() }
+                    jsonPath("$.compliance") { value("pending") }
+                }.id()
+
+        assertEquals(LintStatus.PENDING, statusOf(id))
+    }
+
+    // Sin conexión Spring no lanza DataAccessException sino esta, que no es una DataAccessException
+    @Test
+    fun `si la base no da conexion al guardar el estado el snippet se crea igual y queda pending`() {
+        failLintStatusUpdatesWith(CannotCreateTransactionException("connection refused"))
+
+        val id =
+            create()
+                .andExpect {
+                    status { isCreated() }
+                    jsonPath("$.compliance") { value("pending") }
+                }.id()
+
+        assertEquals(LintStatus.PENDING, statusOf(id))
+    }
+
+    @Test
     fun `el listado con un estado de linteo inventado responde 400 con los valores aceptados`() {
         mockMvc
             .get("/snippets?compliance=casi") {
@@ -249,6 +284,10 @@ class SnippetLintTest(
 
     private fun ResultActionsDsl.id(): UUID =
         UUID.fromString(JsonPath.read(andReturn().response.contentAsString, "$.id"))
+
+    // Los matchers de Mockito devuelven null y Kotlin no lo acepta acá: el valor después de ?: no se usa
+    private fun failLintStatusUpdatesWith(failure: RuntimeException) =
+        doThrow(failure).`when`(repository).updateLintStatus(any() ?: UUID(0, 0), any() ?: LintStatus.PENDING)
 
     private fun statusOf(id: UUID) = repository.findById(id).orElseThrow().lintStatus
 
