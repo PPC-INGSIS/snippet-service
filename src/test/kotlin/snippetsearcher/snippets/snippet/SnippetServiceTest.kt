@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
+import org.springframework.dao.DataAccessException
 import snippetsearcher.snippets.TestcontainersConfiguration
 import snippetsearcher.snippets.asset.ContentResult
 import snippetsearcher.snippets.asset.FakeAssetClient
@@ -17,6 +18,7 @@ import snippetsearcher.snippets.printscript.FakePrintScriptClient
 import snippetsearcher.snippets.printscript.FakePrintScriptConfiguration
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
@@ -165,16 +167,55 @@ class SnippetServiceTest(
         assertEquals(before, repository.count())
     }
 
-    // El contenido va antes que el dueno, asi que si Permisos falla ya quedo escrito.
-    // Es basura que nadie referencia: mas barata que una fila sin dueno.
+    // El contenido va antes que el dueno, asi que si Permisos falla ya quedo escrito: se borra
     @Test
-    fun `si Permisos falla el contenido queda huerfano pero no hay snippet`() {
+    fun `si Permisos falla se borra el contenido y no hay snippet`() {
         permissions.failWith = "connection refused"
 
         service.create(owner, saludo)
 
-        assertEquals(1, asset.count())
+        assertEquals(0, asset.count())
         assertEquals(0, permissions.count())
+    }
+
+    // La limpieza es lo mejor que se puede hacer: si tambien falla, el usuario ve el error que la provoco
+    @Test
+    fun `si la limpieza falla la respuesta sigue siendo el error original`() {
+        permissions.failWith = "connection refused"
+        asset.failDeletesWith = "asset caido"
+
+        val result = service.create(owner, saludo)
+
+        assertEquals("connection refused", assertIs<CreateSnippetResult.OwnerNotRegistered>(result).message)
+        // Queda el huerfano: el log con el id es el rastro
+        assertEquals(1, asset.count())
+    }
+
+    // La fila es lo ultimo: si la base la rechaza, ya quedaron el contenido y el dueno en Permisos
+    @Test
+    fun `si la base no guarda la fila se borran el contenido y el acceso y sigue el error`() {
+        val demasiadoLargo = saludo.copy(name = "a".repeat(NOMBRE_MAS_LARGO_QUE_LA_COLUMNA))
+        val before = repository.count()
+
+        assertFailsWith<DataAccessException> { service.create(owner, demasiadoLargo) }
+
+        assertEquals(before, repository.count())
+        assertEquals(0, asset.count())
+        assertEquals(0, permissions.count())
+    }
+
+    // Compensar borra solo el id que genero el pedido que fallo: lo que ya existia no se toca
+    @Test
+    fun `una creacion fallida no toca un snippet que ya existia`() {
+        val existente = assertIs<CreateSnippetResult.Created>(service.create(owner, saludo)).snippet
+        permissions.failWith = "connection refused"
+
+        service.create(owner, saludo)
+
+        permissions.failWith = null
+        assertEquals(1, asset.count())
+        assertEquals(owner, permissions.ownerOf(existente.id))
+        assertIs<FindSnippetResult.Found>(service.find(owner, existente.id))
     }
 
     // Si el asset service falla ni se intenta registrar al dueno
@@ -556,5 +597,10 @@ class SnippetServiceTest(
         assertIs<ShareSnippetResult.NotFound>(service.share(invitado, snippet.id, "auth0|otro"))
         assertIs<DeleteSnippetResult.NotFound>(service.delete(invitado, snippet.id))
         assertSigueIgual(snippet.id)
+    }
+
+    private companion object {
+        // La columna name es VARCHAR(255)
+        const val NOMBRE_MAS_LARGO_QUE_LA_COLUMNA = 300
     }
 }

@@ -17,6 +17,9 @@ class FakeAssetClient : AssetClient {
     /** Si no es null, put(), get() y delete() fallan con este mensaje en vez de actuar. */
     var failWith: String? = null
 
+    /** Si no es null, solo delete() falla: guarda bien y no puede borrar, para probar una limpieza que falla. */
+    var failDeletesWith: String? = null
+
     /** Cuántas veces se pidió un contenido, para probar quién llama al asset service y quién no. */
     var gets = 0
         private set
@@ -39,7 +42,7 @@ class FakeAssetClient : AssetClient {
     }
 
     override fun delete(snippetId: UUID): DeleteContentResult {
-        failWith?.let { return DeleteContentResult.Failed(it) }
+        (failWith ?: failDeletesWith)?.let { return DeleteContentResult.Failed(it) }
 
         contents.remove(snippetId)
         return DeleteContentResult.Deleted
@@ -48,6 +51,7 @@ class FakeAssetClient : AssetClient {
     fun clear() {
         contents.clear()
         failWith = null
+        failDeletesWith = null
         gets = 0
     }
 

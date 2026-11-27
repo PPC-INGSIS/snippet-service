@@ -1,13 +1,16 @@
 package snippetsearcher.snippets.snippet
 
 import org.slf4j.LoggerFactory
+import org.springframework.dao.DataAccessException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
 import snippetsearcher.snippets.asset.AssetClient
+import snippetsearcher.snippets.asset.DeleteContentResult
 import snippetsearcher.snippets.asset.SaveContentResult
 import snippetsearcher.snippets.language.LanguageCatalog
 import snippetsearcher.snippets.language.ValidationResult
+import snippetsearcher.snippets.permissions.DeleteAccessesResult
 import snippetsearcher.snippets.permissions.PermissionsClient
 import snippetsearcher.snippets.permissions.RegisterAccessResult
 import java.util.UUID
@@ -124,8 +127,13 @@ class SnippetWriter(
      * contenido o cuyo dueño no existen se rompe recién cuando alguien la lee, y hasta
      * entonces nadie se entera.
      *
-     * El precio son datos huérfanos: un archivo en el bucket o un acceso en Permisos que
-     * no referencia a ningún snippet. Es basura, mucho más barata que una fila rota.
+     * Si un paso falla, se borra lo que ya se escribió (ver [discardContent] y [discardAccesses]).
+     * Es lo mejor que se puede hacer, no una garantía: si el servicio que falló sigue caído, borrar
+     * también falla, y lo que queda es basura que nadie ve. Mucho más barata que una fila rota.
+     *
+     * Se compensa y no se barre periódicamente porque para barrer habría que listar todo el bucket y
+     * todos los accesos, y ni el asset service de la cátedra ni Permisos lo permiten. Y compensar nunca
+     * toca un snippet que existe: borra solo el id que este pedido acaba de generar.
      */
     private fun store(
         ownerId: String,
@@ -136,6 +144,8 @@ class SnippetWriter(
         when (val saved = assetClient.put(id, newSnippet.content)) {
             is SaveContentResult.Failed -> {
                 log.warn("No se creó el snippet {}: el asset service no guardó el contenido", id)
+                // Pudo guardarlo y perderse la respuesta (un timeout)
+                discardContent(id)
                 return CreateSnippetResult.ContentNotSaved(saved.message)
             }
             is SaveContentResult.Saved -> Unit
@@ -143,8 +153,10 @@ class SnippetWriter(
 
         when (val registered = permissionsClient.registerOwner(id, ownerId)) {
             is RegisterAccessResult.Failed -> {
-                // El contenido ya quedó escrito: queda huérfano en el bucket
-                log.warn("No se creó el snippet {}: Permisos no registró al dueño. Queda contenido huérfano", id)
+                log.warn("No se creó el snippet {}: Permisos no registró al dueño", id)
+                // El contenido ya quedó escrito, y el acceso pudo quedar si se perdió la respuesta
+                discardContent(id)
+                discardAccesses(id)
                 return CreateSnippetResult.OwnerNotRegistered(registered.message)
             }
             is RegisterAccessResult.Registered -> Unit
@@ -159,9 +171,34 @@ class SnippetWriter(
                 language = newSnippet.language,
                 version = newSnippet.version,
             )
-        val guardado = repository.save(snippet)
+        val guardado =
+            try {
+                repository.save(snippet)
+            } catch (failure: DataAccessException) {
+                // Se limpia y se relanza: para quien llama sigue siendo el mismo 500 de siempre
+                log.warn("No se creó el snippet {}: la base no guardó la fila", id)
+                discardContent(id)
+                discardAccesses(id)
+                throw failure
+            }
         // Cambio de estado: se creó algo. El "quién" sale del MDC
         log.info("Snippet creado: id={} lenguaje={} version={}", guardado.id, guardado.language, guardado.version)
         return CreateSnippetResult.Created(guardado)
+    }
+
+    // Las dos limpiezas son de un snippet que no llegó a existir. Si fallan, el log con el id es el
+    // único rastro para limpiar a mano, y la respuesta sigue siendo el error que la provocó
+    private fun discardContent(id: UUID) {
+        if (assetClient.delete(id) is DeleteContentResult.Failed) {
+            log.warn("Quedó contenido huérfano del snippet {} en el asset service", id)
+        }
+    }
+
+    private fun discardAccesses(id: UUID) {
+        if (permissionsClient.deleteAccesses(id) is DeleteAccessesResult.Failed) {
+            // "Pueden": si Permisos nunca registró el acceso, no quedó nada. Afirmarlo mandaría a
+            // alguien a buscar datos que no existen
+            log.warn("Pueden haber quedado accesos huérfanos del snippet {} en Permisos", id)
+        }
     }
 }
