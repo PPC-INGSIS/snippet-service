@@ -196,7 +196,9 @@ class SnippetWriter(
 
     private fun discardAccesses(id: UUID) {
         if (permissionsClient.deleteAccesses(id) is DeleteAccessesResult.Failed) {
-            log.warn("Quedaron accesos huérfanos del snippet {} en Permisos", id)
+            // "Pueden": si Permisos nunca registró el acceso, no quedó nada. Afirmarlo mandaría a
+            // alguien a buscar datos que no existen
+            log.warn("Pueden haber quedado accesos huérfanos del snippet {} en Permisos", id)
         }
     }
 }
