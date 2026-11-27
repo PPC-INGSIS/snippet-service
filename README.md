@@ -93,6 +93,8 @@ Un token válido pero **sin `sub`** da **401** en todos los endpoints que miran 
 
 Todos los cuerpos van y vuelven en JSON. Los errores que no tienen una forma propia salen como `ProblemDetail` ([RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)), que es el default de Spring.
 
+**Las rutas de acá son las del servicio.** Desplegado, nginx expone todo bajo `/api`: la UI pide `https://<dominio>/api/snippets` y nginx le saca el prefijo antes de llegar hasta acá. El prefijo igual viaja en `X-Forwarded-Prefix`, y con `server.forward-headers-strategy=framework` Spring se lo vuelve a poner a la URI que ve cada pedido. A los endpoints HTTP no les cambia nada, porque ninguno arma URLs ni mira la ruta a mano; al WebSocket sí, y es de donde salió el bug de #87.
+
 ### El listado
 
 ```
@@ -181,7 +183,7 @@ POST /snippets
 |---|---|---|
 | `201` | El snippet, con `id`, `author` y `extension` | Se validó, se guardó el contenido y se registró el dueño |
 | `400` | `{"errors": [{"message", "line", "column"}]}` | El código no compila. `line` y `column` pueden venir en `null`: no todos los errores de PrintScript tienen posición |
-| `400` | `{"message": "..."}` | El pedido no se pudo procesar: falta un campo, la versión no existe, el nombre es muy largo |
+| `400` | `{"message": "..."}` | El pedido no se pudo procesar: el lenguaje no existe, la versión no existe, falta un campo, el nombre es muy largo |
 | `502` | `{"message": "..."}` | PrintScript, el asset service o Permisos no contestaron |
 
 - **`extension` no se manda, se deriva del lenguaje.** Es del catálogo, no del snippet: `printscript` → `ps`. Si viajara en el pedido, dos snippets del mismo lenguaje podrían tener extensiones distintas. Viene en la respuesta porque la UI la usa para el nombre del archivo al descargar.
@@ -268,7 +270,11 @@ Las versiones las sabe PrintScript, así que es el único de los dos que puede d
 WS /snippets/{id}/execution
 ```
 
+Desde el browser, con el prefijo de nginx: `wss://<dominio>/api/snippets/{id}/execution`.
+
 Snippets no ejecuta: hace de **relay** entre el browser y PrintScript. Los mensajes de PrintScript pasan tal cual, sin leerlos.
+
+**El id se lee del tramo anterior a `execution`, no de una posición fija.** El handler se registra con un patrón (`/snippets/*/execution`), así que no hay `@PathVariable` y el id sale de la URI de la sesión. Esa URI sí trae el prefijo de nginx, porque `X-Forwarded-Prefix` se lo vuelve a poner: contando desde adelante, el id de `/api/snippets/{id}/execution` queda en otro lugar que el de `/snippets/{id}/execution`, y la ejecución se rechazaba siempre en dev con `La URL no trae un id de snippet válido` (#87). Es la única parte del servicio que mira la ruta a mano, y por eso la única a la que el prefijo le cambia algo.
 
 El protocolo de este lado son dos mensajes de entrada y uno de salida:
 
@@ -290,6 +296,7 @@ Los motivos de un `rejected`:
 |---|---|
 | `No se recibió el mensaje 'auth' a tiempo` | Pasaron los 5 segundos |
 | `El primer mensaje tiene que ser 'auth'` | Llegó otra cosa, o no era JSON |
+| `La URL no trae un id de snippet válido` | El tramo anterior a `execution` no es un UUID |
 | `El token no es válido o no tiene el scope` | Vencido, mal firmado, o sin `read:snippets` |
 | `No se encontró el snippet` | No existe **o no tenés acceso**, igual que en el `GET` |
 | `No se pudo verificar el acceso al snippet` / `No se pudo leer el contenido del snippet` | Permisos o el asset service no contestaron |
