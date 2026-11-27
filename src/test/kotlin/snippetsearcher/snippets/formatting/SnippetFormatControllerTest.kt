@@ -24,6 +24,7 @@ import snippetsearcher.snippets.rules.SavedRuleId
 import snippetsearcher.snippets.rules.SavedRuleRepository
 import snippetsearcher.snippets.snippet.Snippet
 import snippetsearcher.snippets.snippet.SnippetRepository
+import tools.jackson.databind.ObjectMapper
 import java.util.UUID
 import kotlin.test.assertEquals
 
@@ -45,6 +46,7 @@ class SnippetFormatControllerTest(
     @Autowired private val savedRules: SavedRuleRepository,
     @Autowired private val printScript: FakePrintScriptClient,
     @Autowired private val permissions: FakePermissionsClient,
+    @Autowired private val json: ObjectMapper,
 ) {
     @BeforeEach
     fun limpiarLosFakes() {
@@ -131,22 +133,36 @@ class SnippetFormatControllerTest(
             }
     }
 
+    // Las comillas y los saltos de línea son lo primero que se rompe al pasar código por JSON
     @Test
-    fun `POST format de un snippet con un lenguaje que no esta en el catalogo responde 400`() {
+    fun `POST format con comillas y saltos de linea en el codigo los manda tal cual`() {
+        val id = guardar("auth0|ana")
+        val code = "let saludo: string = \"hola\";\nprintln(saludo);"
+
+        formatear(id, "auth0|ana", code)
+            .andExpect {
+                status { isOk() }
+                jsonPath("$.content") { value(code) }
+            }
+
+        assertEquals(code, printScript.lastContent)
+    }
+
+    // 500 y no 400: el lenguaje sale del snippet guardado, quien pide no puede arreglarlo
+    @Test
+    fun `POST format de un snippet con un lenguaje que no esta en el catalogo responde 500`() {
         val id = guardar("auth0|ana", language = "python")
 
         formatear(id, "auth0|ana", "print(1)")
-            .andExpect {
-                status { isBadRequest() }
-                jsonPath("$.detail") { value("El lenguaje 'python' no existe") }
-            }
+            .andExpect { status { isInternalServerError() } }
     }
 
     // 502 y no 500: el pedido estaba bien, falló un servicio nuestro
     @Test
     fun `POST format con PrintScript caido responde 502`() {
         val id = guardar("auth0|ana")
-        printScript.formatResult = FormatResult.Failed("No se pudo formatear el snippet")
+        // Otro texto que el del controller: así se prueba que el detalle interno no llega al cliente
+        printScript.formatResult = FormatResult.Failed("connection refused")
 
         formatear(id, "auth0|ana", "println(1);")
             .andExpect {
@@ -195,8 +211,7 @@ class SnippetFormatControllerTest(
     ) = mockMvc.post("/snippets/$snippetId/format") {
         with(jwt().jwt { it.subject(userId) }.authorities(writeSnippets))
         contentType = MediaType.APPLICATION_JSON
-        // Los códigos de estos tests no tienen comillas ni barras: van al JSON tal cual
-        content = """{"content":"$code"}"""
+        content = json.writeValueAsString(mapOf("content" to code))
     }
 
     private fun guardar(

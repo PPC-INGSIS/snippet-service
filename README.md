@@ -266,7 +266,7 @@ POST /snippets/{id}/format
 - **La versión es la del snippet y las reglas son las de formateo activas de su dueño**, no las de quien pide.
 - **Quien tiene lectura puede formatear**, no solo el dueño: formatear no cambia nada y es lo que permite descargar la versión formateada de un snippet compartido.
 - La respuesta es un objeto y no el texto suelto, para poder sumarle campos sin romper a la UI.
-- Status: `200`, `400` con el mensaje de PrintScript si no pudo formatear (el código no se puede analizar, es muy grande o una regla guardada ya no sirve), `404` si no existe o no lo podés leer, `502` si PrintScript o Permisos no contestaron.
+- Status: `200`, `400` con el mensaje de PrintScript si no pudo formatear (el código no se puede analizar, es muy grande o una regla guardada ya no sirve), `404` si no existe o no lo podés leer, `500` si el lenguaje del snippet no está en el catálogo (son nuestros datos los inconsistentes), `502` si PrintScript o Permisos no contestaron.
 
 ### Usuarios y lenguajes
 

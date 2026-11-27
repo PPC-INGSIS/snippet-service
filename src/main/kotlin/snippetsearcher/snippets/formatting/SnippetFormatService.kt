@@ -1,5 +1,6 @@
 package snippetsearcher.snippets.formatting
 
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import snippetsearcher.snippets.language.FormatResult
 import snippetsearcher.snippets.language.LanguageCatalog
@@ -24,6 +25,8 @@ class SnippetFormatService(
     private val languages: LanguageCatalog,
     private val rules: RuleService,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     fun format(
         userId: String,
         snippetId: UUID,
@@ -36,9 +39,12 @@ class SnippetFormatService(
                 is ReadAccess.Unknown -> return FormatSnippetResult.Unavailable(read.message)
             }
 
+        // En SnippetWriter es un 400 porque el lenguaje viene en el pedido. Acá sale del snippet guardado
         val language =
-            languages.find(snippet.language)
-                ?: return FormatSnippetResult.Rejected("El lenguaje '${snippet.language}' no existe")
+            languages.find(snippet.language) ?: run {
+                log.warn("No se formateó el snippet {}: su lenguaje no está en el catálogo", snippet.id)
+                return FormatSnippetResult.LanguageMissing
+            }
 
         val active = rules.activeRules(snippet.ownerId, language.name, RuleKind.FORMAT)
         return when (val result = language.format(snippet.version, content, active)) {

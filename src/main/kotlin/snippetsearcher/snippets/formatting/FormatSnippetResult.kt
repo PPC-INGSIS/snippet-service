@@ -8,6 +8,12 @@ sealed interface FormatSnippetResult {
     // No existe, o existe y el usuario no lo puede leer: a propósito no se distingue
     data object NotFound : FormatSnippetResult
 
+    /**
+     * El lenguaje del snippet guardado no está en el catálogo. Aparte de `Rejected` porque no es culpa
+     * de quien pide: el lenguaje sale de nuestros datos, no del pedido, y reintentar no lo arregla.
+     */
+    data object LanguageMissing : FormatSnippetResult
+
     // El lenguaje no lo formateó: el código no se pudo analizar, es muy grande o una regla guardada ya no sirve
     data class Rejected(
         val message: String,

@@ -30,6 +30,10 @@ class SnippetFormatController(
 
             FormatSnippetResult.NotFound -> ResponseEntity.notFound().build()
 
+            // 500 y no 400: lo inconsistente son nuestros datos (ya quedó en el log). Mismo criterio que
+            // ContentMissing en POST /tests/run
+            FormatSnippetResult.LanguageMissing -> ResponseEntity.internalServerError().build()
+
             // 400 con el mensaje del lenguaje: dice qué hay que cambiar en el código, por ejemplo un ';' que falta
             is FormatSnippetResult.Rejected ->
                 ResponseEntity.badRequest().body(
