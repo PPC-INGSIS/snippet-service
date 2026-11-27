@@ -242,9 +242,14 @@ class HttpPermissionsClientTest {
         assertIs<SharedSnippetsResult.Failed>(client.sharedWith("auth0|beto"))
     }
 
-    // Un Permisos que atiende y no contesta no puede colgar al thread para siempre
+    // Un Permisos que atiende y no contesta no puede colgar al thread para siempre.
+    // La respuesta es un rol válido a propósito: si el cliente esperara, devolvería Found, así que el
+    // único camino a Failed es el timeout. Con la respuesta por defecto (201 sin body) daría Failed aunque
+    // no cortara.
     @Test
     fun `un Permisos lento corta por read timeout y devuelve Failed`() {
+        status = 200
+        responseBody = """{"snippetId":"${UUID.randomUUID()}","userId":"auth0|ana","role":"READ"}"""
         delay = Duration.ofSeconds(2)
         val impaciente = clienteCon(Duration.ofMillis(200))
 
