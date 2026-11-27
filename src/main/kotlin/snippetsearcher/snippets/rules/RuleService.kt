@@ -45,6 +45,17 @@ class RuleService(
         return ReplaceRulesResult.Replaced(merge(definitions, saved))
     }
 
+    fun activeRules(
+        ownerId: String,
+        language: String,
+        kind: RuleKind,
+    ): Map<String, Any> =
+        savedRules
+            .find(ownerId, language, kind)
+            .filter { it.active }
+            // Un flag no tiene valor: para que PrintScript lo aplique tiene que llegar en true
+            .associate { it.id.ruleId to (it.value ?: true) }
+
     private fun rejectionFor(
         language: Language,
         kind: RuleKind,
