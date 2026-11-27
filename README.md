@@ -69,7 +69,7 @@ cp .env.example .env
 | `REDIS_PORT` | `6379` | Puerto de Redis en tu máquina |
 | `AUTH0_DOMAIN` | **sin default** | El dominio de Auth0. De acá salen el `iss` y la Management API |
 | `AUTH0_AUDIENCE` | **sin default** | La audiencia de la API: para qué API son los tokens que se aceptan |
-| `AUTH0_MANAGEMENT_CLIENT_ID` | **sin default** | La app M2M "Snippets (M2M)", que solo tiene `read:users` |
+| `AUTH0_MANAGEMENT_CLIENT_ID` | **sin default** | La app M2M "Snippets (M2M)": `read:users` en la Management API y `read:snippets` en nuestra API, para el token de servicio |
 | `AUTH0_MANAGEMENT_CLIENT_SECRET` | **sin default** | Su secret. Nunca va al repo |
 | `PRINTSCRIPT_URL` | `http://localhost:8082` | PrintScript: valida, formatea y ejecuta |
 | `PRINTSCRIPT_WS_URL` | `ws://localhost:8082` | Lo mismo por WebSocket, para la ejecución interactiva |

@@ -8,11 +8,10 @@ import org.springframework.stereotype.Component
 // SecurityContextHolder guarda el contexto por hilo: fuera de un pedido (por ejemplo, en Redis) está vacío.
 @Component
 class UserAccessToken : AccessToken {
-    override fun value(): String {
-        val authentication =
-            checkNotNull(SecurityContextHolder.getContext().authentication as? JwtAuthenticationToken) {
-                "No hay un usuario autenticado en este pedido: no hay token para reenviar"
-            }
-        return authentication.token.tokenValue
-    }
+    override fun value(): String =
+        checkNotNull(currentOrNull()) { "No hay un usuario autenticado en este pedido: no hay token para reenviar" }
+
+    // null fuera de un pedido: para elegir otro token sin usar la excepción como control de flujo
+    fun currentOrNull(): String? =
+        (SecurityContextHolder.getContext().authentication as? JwtAuthenticationToken)?.token?.tokenValue
 }

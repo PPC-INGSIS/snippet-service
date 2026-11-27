@@ -7,6 +7,7 @@ import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 
 class UserAccessTokenTest {
     // El contexto es por hilo y los tests comparten hilo: si no se limpia, un test le pasa el usuario al siguiente
@@ -33,5 +34,10 @@ class UserAccessTokenTest {
         val error = assertFailsWith<IllegalStateException> { UserAccessToken().value() }
 
         assertEquals("No hay un usuario autenticado en este pedido: no hay token para reenviar", error.message)
+    }
+
+    @Test
+    fun `sin usuario en el pedido currentOrNull devuelve null en vez de fallar`() {
+        assertNull(UserAccessToken().currentOrNull())
     }
 }
