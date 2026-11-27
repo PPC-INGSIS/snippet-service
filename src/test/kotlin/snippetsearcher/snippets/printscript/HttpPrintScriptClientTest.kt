@@ -13,15 +13,20 @@ import org.slf4j.LoggerFactory
 import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.HttpServerErrorException
 import org.springframework.web.client.ResourceAccessException
+import snippetsearcher.snippets.language.RuleDefinition
+import snippetsearcher.snippets.language.RuleKind
+import snippetsearcher.snippets.language.RulesResult
 import snippetsearcher.snippets.language.ValidationError
 import snippetsearcher.snippets.language.ValidationResult
 import snippetsearcher.snippets.language.VersionsResult
 import snippetsearcher.snippets.security.AccessToken
 import java.net.InetSocketAddress
+import java.net.URI
 import java.time.Duration
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class HttpPrintScriptClientTest {
@@ -34,6 +39,7 @@ class HttpPrintScriptClientTest {
     private var receivedQuery = ""
     private var receivedBody = ""
     private var receivedAuthorization: String? = null
+    private var receivedUri: URI? = null
 
     @BeforeEach
     fun start() {
@@ -43,6 +49,10 @@ class HttpPrintScriptClientTest {
             respond(exchange)
         }
         server.createContext("/versions") { exchange -> respond(exchange) }
+        server.createContext("/rules") { exchange ->
+            receivedUri = exchange.requestURI
+            respond(exchange)
+        }
         server.start()
     }
 
@@ -285,6 +295,84 @@ class HttpPrintScriptClientTest {
         response = ""
 
         assertIs<VersionsResult.Failed>(client().versions())
+    }
+
+    @Test
+    fun `rules de formateo pide GET rules format sin version`() {
+        response = """{"version":"1.1","rules":[]}"""
+
+        client().rules(RuleKind.FORMAT)
+
+        assertEquals("/rules/format", receivedUri?.path)
+        assertNull(receivedUri?.query)
+    }
+
+    @Test
+    fun `rules de linteo pide GET rules lint sin version`() {
+        response = """{"version":"1.1","rules":[]}"""
+
+        client().rules(RuleKind.LINT)
+
+        assertEquals("/rules/lint", receivedUri?.path)
+        assertNull(receivedUri?.query)
+    }
+
+    @Test
+    fun `rules convierte el id, la descripcion, el since y el default de cada regla`() {
+        response =
+            """
+            {"version":"1.1","rules":[
+              {"id":"if-indent","description":"Espacios de indentación dentro de un if","since":"1.1",
+               "schema":{"type":"integer","minimum":0,"maximum":8,"default":4}}
+            ]}
+            """.trimIndent()
+
+        val result = client().rules(RuleKind.FORMAT)
+
+        val expected = RuleDefinition("if-indent", "Espacios de indentación dentro de un if", "1.1", 4)
+        assertEquals(RulesResult.Found(listOf(expected)), result)
+    }
+
+    @Test
+    fun `rules deja en null el default de un flag que no lo trae`() {
+        response =
+            """
+            {"version":"1.1","rules":[
+              {"id":"line-break-after-statement","description":"Salto de línea después de cada sentencia",
+               "since":"1.0","schema":{"type":"boolean","const":true}}
+            ]}
+            """.trimIndent()
+
+        val result = client().rules(RuleKind.FORMAT)
+
+        val expected =
+            RuleDefinition("line-break-after-statement", "Salto de línea después de cada sentencia", "1.0", null)
+        assertEquals(RulesResult.Found(listOf(expected)), result)
+    }
+
+    @Test
+    fun `rules manda el token en el header Authorization`() {
+        response = """{"version":"1.1","rules":[]}"""
+
+        client().rules(RuleKind.LINT)
+
+        assertEquals("Bearer token-de-prueba", receivedAuthorization)
+    }
+
+    @Test
+    fun `rules con un 500 de PrintScript devuelve Failed`() {
+        status = 500
+        contentType = "application/problem+json"
+        response = """{"title":"Internal Server Error","status":500}"""
+
+        assertIs<RulesResult.Failed>(client().rules(RuleKind.FORMAT))
+    }
+
+    @Test
+    fun `rules con un 200 sin body devuelve Failed`() {
+        response = ""
+
+        assertIs<RulesResult.Failed>(client().rules(RuleKind.FORMAT))
     }
 
     // Los warn que deja el cliente mientras corre el bloque: así se prueba que la falla queda en el log

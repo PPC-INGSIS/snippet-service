@@ -20,6 +20,8 @@ class LanguageCatalogTest {
             version: String,
             content: String,
         ) = ValidationResult.Checked(emptyList())
+
+        override fun rules(kind: RuleKind) = RulesResult.Found(emptyList())
     }
 
     @Test

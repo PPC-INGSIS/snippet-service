@@ -11,4 +11,6 @@ interface Language {
         version: String,
         content: String,
     ): ValidationResult
+
+    fun rules(kind: RuleKind): RulesResult
 }
