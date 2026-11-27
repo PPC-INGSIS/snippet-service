@@ -33,6 +33,12 @@ class LanguageCatalogTest {
             content: String,
             rules: Map<String, Any>,
         ) = LintResult.Linted(emptyList())
+
+        override fun format(
+            version: String,
+            content: String,
+            rules: Map<String, Any>,
+        ) = FormatResult.Formatted(content)
     }
 
     @Test
