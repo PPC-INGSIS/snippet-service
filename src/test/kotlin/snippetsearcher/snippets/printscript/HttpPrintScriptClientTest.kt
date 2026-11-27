@@ -16,6 +16,7 @@ import org.springframework.web.client.ResourceAccessException
 import snippetsearcher.snippets.language.RuleDefinition
 import snippetsearcher.snippets.language.RuleKind
 import snippetsearcher.snippets.language.RulesResult
+import snippetsearcher.snippets.language.RulesValidationResult
 import snippetsearcher.snippets.language.ValidationError
 import snippetsearcher.snippets.language.ValidationResult
 import snippetsearcher.snippets.language.VersionsResult
@@ -51,6 +52,7 @@ class HttpPrintScriptClientTest {
         server.createContext("/versions") { exchange -> respond(exchange) }
         server.createContext("/rules") { exchange ->
             receivedUri = exchange.requestURI
+            receivedBody = exchange.requestBody.readAllBytes().decodeToString()
             respond(exchange)
         }
         server.start()
@@ -373,6 +375,87 @@ class HttpPrintScriptClientTest {
         response = ""
 
         assertIs<RulesResult.Failed>(client().rules(RuleKind.FORMAT))
+    }
+
+    @Test
+    fun `validateRules manda las reglas al path del kind con el token y un 204 es que son validas`() {
+        status = 204
+        response = ""
+
+        val rules = linkedMapOf("if-indent" to 4, "space-before-colon" to "never")
+
+        val result = client().validateRules(RuleKind.LINT, rules)
+
+        assertEquals(RulesValidationResult.Valid, result)
+        assertEquals("/rules/lint/validate", receivedUri?.path)
+        assertEquals("""{"rules":{"if-indent":4,"space-before-colon":"never"}}""", receivedBody)
+        assertEquals("Bearer token-de-prueba", receivedAuthorization)
+    }
+
+    @Test
+    fun `validateRules de formateo manda a rules format validate`() {
+        status = 204
+        response = ""
+
+        client().validateRules(RuleKind.FORMAT, emptyMap())
+
+        assertEquals("/rules/format/validate", receivedUri?.path)
+        assertEquals("""{"rules":{}}""", receivedBody)
+    }
+
+    @Test
+    fun `validateRules con un 400 devuelve las reglas invalidas con el mensaje y la regla`() {
+        status = 400
+        contentType = "application/problem+json"
+        response =
+            """
+            {"title":"Bad Request","status":400,"detail":"La regla 'no-existe' no existe","rule":"no-existe"}
+            """.trimIndent()
+
+        val result = client().validateRules(RuleKind.FORMAT, mapOf("no-existe" to true))
+
+        assertEquals(RulesValidationResult.Invalid("La regla 'no-existe' no existe", "no-existe"), result)
+    }
+
+    @Test
+    fun `validateRules con un 400 en HTML devuelve invalidas con el texto por defecto y sin regla`() {
+        status = 400
+        contentType = "text/html"
+        response = "<html>Bad Request</html>"
+
+        val result = client().validateRules(RuleKind.FORMAT, mapOf("if-indent" to 4))
+
+        assertEquals(RulesValidationResult.Invalid("PrintScript rechazó el pedido", null), result)
+    }
+
+    @Test
+    fun `validateRules con un 500 se loguea y devuelve Failed`() {
+        status = 500
+        contentType = "application/problem+json"
+        response = """{"title":"Internal Server Error","status":500}"""
+
+        val warns =
+            warnsDuring {
+                assertIs<RulesValidationResult.Failed>(client().validateRules(RuleKind.LINT, emptyMap()))
+            }
+
+        assertEquals("No se pudieron validar las reglas en PrintScript", warns.single().formattedMessage)
+    }
+
+    @Test
+    fun `validateRules con otro 4xx devuelve Failed`() {
+        status = 415
+        contentType = "application/problem+json"
+        response = """{"title":"Unsupported Media Type","status":415}"""
+
+        assertIs<RulesValidationResult.Failed>(client().validateRules(RuleKind.LINT, emptyMap()))
+    }
+
+    @Test
+    fun `validateRules con un 200 y no un 204 devuelve Failed`() {
+        response = "{}"
+
+        assertIs<RulesValidationResult.Failed>(client().validateRules(RuleKind.LINT, emptyMap()))
     }
 
     // Los warn que deja el cliente mientras corre el bloque: así se prueba que la falla queda en el log

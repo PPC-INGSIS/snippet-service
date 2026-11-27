@@ -11,6 +11,7 @@ import snippetsearcher.snippets.http.timedRestClient
 import snippetsearcher.snippets.language.RuleDefinition
 import snippetsearcher.snippets.language.RuleKind
 import snippetsearcher.snippets.language.RulesResult
+import snippetsearcher.snippets.language.RulesValidationResult
 import snippetsearcher.snippets.language.ValidationError
 import snippetsearcher.snippets.language.ValidationResult
 import snippetsearcher.snippets.language.VersionsResult
@@ -51,7 +52,7 @@ class HttpPrintScriptClient(
                 log.warn(VALIDATE_FAILED_LOG, exception)
                 throw exception
             }
-            ValidationResult.Rejected(rejectionDetail(exception) ?: DEFAULT_REJECTION)
+            ValidationResult.Rejected(rejection(exception).detailOrDefault())
         } catch (exception: RestClientException) {
             // Un 5xx, un timeout o PrintScript caído. Se loguea acá y no se deja para Tomcat: cuando Tomcat
             // la loguea, los filtros ya limpiaron el MDC y la línea sale sin trace.id ni user.id
@@ -84,7 +85,7 @@ class HttpPrintScriptClient(
             }
         } catch (exception: HttpClientErrorException) {
             if (exception.statusCode.value() in REJECTED_STATUSES) {
-                ExecutionResult.Rejected(rejectionDetail(exception) ?: DEFAULT_REJECTION)
+                ExecutionResult.Rejected(rejection(exception).detailOrDefault())
             } else {
                 log.warn(EXECUTE_FAILED_LOG, exception)
                 ExecutionResult.Failed(EXECUTE_FAILED)
@@ -120,11 +121,7 @@ class HttpPrintScriptClient(
 
     // Sin version: PrintScript devuelve las de la última versión
     override fun rules(kind: RuleKind): RulesResult {
-        val segment =
-            when (kind) {
-                RuleKind.FORMAT -> "format"
-                RuleKind.LINT -> "lint"
-            }
+        val segment = segmentOf(kind)
         return try {
             val rules =
                 restClient
@@ -147,20 +144,61 @@ class HttpPrintScriptClient(
         }
     }
 
-    private fun rejectionDetail(exception: HttpClientErrorException): String? =
+    override fun validateRules(
+        kind: RuleKind,
+        rules: Map<String, Any?>,
+    ): RulesValidationResult =
         try {
-            exception
-                .getResponseBodyAs(RejectedResponse::class.java)
-                ?.detail
-                ?.takeUnless { it.isBlank() }
+            val status =
+                restClient
+                    .post()
+                    .uri("/rules/{kind}/validate", segmentOf(kind))
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(mapOf("rules" to rules))
+                    .retrieve()
+                    .toBodilessEntity()
+                    .statusCode
+
+            if (status.value() == NO_CONTENT) {
+                RulesValidationResult.Valid
+            } else {
+                log.warn("PrintScript respondió POST /rules/{}/validate con {} y no con 204", segmentOf(kind), status)
+                RulesValidationResult.Failed(VALIDATE_RULES_FAILED)
+            }
+        } catch (exception: HttpClientErrorException) {
+            if (exception.statusCode.value() == BAD_REQUEST) {
+                val rejection = rejection(exception)
+                RulesValidationResult.Invalid(rejection.detailOrDefault(), rejection?.rule)
+            } else {
+                log.warn(VALIDATE_RULES_FAILED_LOG, exception)
+                RulesValidationResult.Failed(VALIDATE_RULES_FAILED)
+            }
+        } catch (exception: RestClientException) {
+            log.warn(VALIDATE_RULES_FAILED_LOG, exception)
+            RulesValidationResult.Failed(VALIDATE_RULES_FAILED)
+        }
+
+    private fun segmentOf(kind: RuleKind): String =
+        when (kind) {
+            RuleKind.FORMAT -> "format"
+            RuleKind.LINT -> "lint"
+        }
+
+    private fun rejection(exception: HttpClientErrorException): RejectedResponse? =
+        try {
+            exception.getResponseBodyAs(RejectedResponse::class.java)
         } catch (ignored: RestClientException) {
             // El body no es Problem Details (por ejemplo, HTML de un proxy)
             null
         }
 
+    private fun RejectedResponse?.detailOrDefault(): String =
+        this?.detail?.takeUnless { it.isBlank() } ?: DEFAULT_REJECTION
+
     companion object {
         // Se comparan números y no constantes de HttpStatus: el 413 tiene dos (PAYLOAD_TOO_LARGE, deprecada,
         // y CONTENT_TOO_LARGE), así que el número es lo único que no es ambiguo
+        private const val NO_CONTENT = 204
         private const val BAD_REQUEST = 400
         private const val CONTENT_TOO_LARGE = 413
 
@@ -174,6 +212,10 @@ class HttpPrintScriptClient(
         private const val RULES_FAILED = "PrintScript no respondió"
 
         private const val VALIDATE_FAILED_LOG = "No se pudo validar el snippet en PrintScript"
+
+        private const val VALIDATE_RULES_FAILED = "PrintScript no respondió"
+
+        private const val VALIDATE_RULES_FAILED_LOG = "No se pudieron validar las reglas en PrintScript"
 
         private const val EXECUTE_FAILED = "PrintScript no respondió"
 
@@ -236,7 +278,9 @@ data class RuleSchemaResponse(
     val default: Any? = null,
 )
 
-// Respuesta 400 o 413 de printscript-service, en formato Problem Details (RFC 9457)
+// Respuesta 400 o 413 de printscript-service, en formato Problem Details (RFC 9457).
+// rule solo viene al validar reglas: es el id de la regla inválida
 data class RejectedResponse(
     val detail: String? = null,
+    val rule: String? = null,
 )

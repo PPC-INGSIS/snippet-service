@@ -13,4 +13,9 @@ interface Language {
     ): ValidationResult
 
     fun rules(kind: RuleKind): RulesResult
+
+    fun validateRules(
+        kind: RuleKind,
+        rules: Map<String, Any?>,
+    ): RulesValidationResult
 }
