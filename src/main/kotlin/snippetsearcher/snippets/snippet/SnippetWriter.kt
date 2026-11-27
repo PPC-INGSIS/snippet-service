@@ -7,9 +7,9 @@ import org.springframework.transaction.support.TransactionTemplate
 import snippetsearcher.snippets.asset.AssetClient
 import snippetsearcher.snippets.asset.SaveContentResult
 import snippetsearcher.snippets.language.LanguageCatalog
+import snippetsearcher.snippets.language.ValidationResult
 import snippetsearcher.snippets.permissions.PermissionsClient
 import snippetsearcher.snippets.permissions.RegisterAccessResult
-import snippetsearcher.snippets.printscript.ValidationResult
 import java.util.UUID
 
 /**

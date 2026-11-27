@@ -13,6 +13,9 @@ import org.slf4j.LoggerFactory
 import org.springframework.web.client.HttpClientErrorException
 import org.springframework.web.client.HttpServerErrorException
 import org.springframework.web.client.ResourceAccessException
+import snippetsearcher.snippets.language.ValidationError
+import snippetsearcher.snippets.language.ValidationResult
+import snippetsearcher.snippets.language.VersionsResult
 import snippetsearcher.snippets.security.AccessToken
 import java.net.InetSocketAddress
 import java.time.Duration

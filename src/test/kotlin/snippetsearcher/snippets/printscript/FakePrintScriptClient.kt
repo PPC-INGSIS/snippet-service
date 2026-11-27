@@ -3,6 +3,8 @@ package snippetsearcher.snippets.printscript
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
+import snippetsearcher.snippets.language.ValidationResult
+import snippetsearcher.snippets.language.VersionsResult
 
 // Reemplazo de printscript-service para los tests: responde lo que le carguemos en result y versionsResult
 class FakePrintScriptClient : PrintScriptClient {

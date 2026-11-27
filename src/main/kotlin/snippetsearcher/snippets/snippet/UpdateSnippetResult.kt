@@ -1,6 +1,6 @@
 package snippetsearcher.snippets.snippet
 
-import snippetsearcher.snippets.printscript.ValidationError
+import snippetsearcher.snippets.language.ValidationError
 
 sealed interface UpdateSnippetResult {
     data class Updated(

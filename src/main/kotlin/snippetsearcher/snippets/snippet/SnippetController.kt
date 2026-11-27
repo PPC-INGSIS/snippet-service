@@ -16,7 +16,7 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 import snippetsearcher.snippets.language.LanguageCatalog
-import snippetsearcher.snippets.printscript.ValidationError
+import snippetsearcher.snippets.language.ValidationError
 import java.util.UUID
 
 @RestController
