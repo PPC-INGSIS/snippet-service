@@ -49,7 +49,7 @@ class SnippetController(
                         page = request.page,
                         pageSize = request.pageSize,
                         count = result.total,
-                        snippets = result.snippets.conAutores(),
+                        snippets = result.snippets.conAutores(ownerId),
                     ),
                 )
 
@@ -90,6 +90,7 @@ class SnippetController(
                         autorDe(result.snippet),
                         extensionDe(result.snippet),
                         result.content,
+                        ownerId,
                     ),
                 )
 
@@ -124,7 +125,7 @@ class SnippetController(
             // La UI espera el snippet de vuelta, no un cuerpo vacio
             is ShareSnippetResult.Shared ->
                 ResponseEntity.ok(
-                    result.snippet.toResponse(autorDe(result.snippet), extensionDe(result.snippet)),
+                    result.snippet.toResponse(autorDe(result.snippet), extensionDe(result.snippet), ownerId),
                 )
 
             // 404 y no 403: un 403 le confirmaria a cualquiera que ese id existe
@@ -178,6 +179,7 @@ class SnippetController(
                         autorDe(result.snippet),
                         extensionDe(result.snippet),
                         request.content,
+                        ownerId,
                     ),
                 )
 
@@ -217,7 +219,7 @@ class SnippetController(
             is CreateSnippetResult.Created ->
                 ResponseEntity.status(
                     HttpStatus.CREATED,
-                ).body(result.snippet.toResponse(autorDe(result.snippet), extensionDe(result.snippet)))
+                ).body(result.snippet.toResponse(autorDe(result.snippet), extensionDe(result.snippet), ownerId))
 
             is CreateSnippetResult.Invalid ->
                 ResponseEntity.badRequest().body(InvalidSnippetResponse(result.errors))
@@ -248,9 +250,9 @@ class SnippetController(
      * Varias filas suelen compartir dueño, así que `namesOf` recibe los ids distintos: una página
      * de 100 snippets de un mismo dueño es una sola consulta a Auth0.
      */
-    private fun List<Snippet>.conAutores(): List<SnippetResponse> {
+    private fun List<Snippet>.conAutores(callerId: String): List<SnippetResponse> {
         val nombres = authors.namesOf(map { it.ownerId })
-        return map { it.toResponse(nombres.getValue(it.ownerId), extensionDe(it)) }
+        return map { it.toResponse(nombres.getValue(it.ownerId), extensionDe(it), callerId) }
     }
 
     private fun autorDe(snippet: Snippet) = authors.nameOf(snippet.ownerId)
@@ -324,6 +326,12 @@ data class SnippetResponse(
     val extension: String,
     // El nombre del dueño, no su sub: es lo que la UI muestra en la columna Author
     val author: String,
+    /*
+     * Si el que pide es el dueño. La UI lo usa para no ofrecer borrar, editar ni compartir un
+     * snippet que le compartieron. Va calculado y no como el sub del dueño: así la regla de
+     * quién es dueño vive acá, y a nadie le llega el identificador de los demás.
+     */
+    val owned: Boolean,
 )
 
 // La forma que espera la UI (PaginatedSnippets en printscript-ui)
@@ -343,6 +351,7 @@ data class SnippetDetailResponse(
     val version: String,
     val extension: String,
     val author: String,
+    val owned: Boolean,
     val content: String,
 )
 
@@ -353,13 +362,15 @@ data class InvalidSnippetResponse(
 private fun Snippet.toResponse(
     author: String,
     extension: String,
-) = SnippetResponse(id, name, description, language, version, extension, author)
+    callerId: String,
+) = SnippetResponse(id, name, description, language, version, extension, author, ownerId == callerId)
 
 private fun Snippet.toDetailResponse(
     author: String,
     extension: String,
     content: String,
-) = SnippetDetailResponse(id, name, description, language, version, extension, author, content)
+    callerId: String,
+) = SnippetDetailResponse(id, name, description, language, version, extension, author, ownerId == callerId, content)
 
 data class RejectedSnippetResponse(
     val message: String,

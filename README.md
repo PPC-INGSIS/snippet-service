@@ -124,7 +124,8 @@ GET /snippets
       "language": "printscript",
       "version": "1.1",
       "extension": "ps",
-      "author": "Lucho Calvani"
+      "author": "Lucho Calvani",
+      "owned": true
     }
   ]
 }
@@ -144,6 +145,7 @@ Las decisiones que no se ven en la forma:
 - **`sortBy` es una lista blanca** (`name`, `language`) y no la columna que venga: con texto libre, cualquiera podría ordenar por `owner_id` y un nombre inventado reventaría con un 500.
 - **`relation=owned` nunca da 502**, porque no necesita preguntarle nada a Permisos. Si Permisos está caído, la UI puede seguir mostrando los propios pidiendo `relation=owned`.
 - **El dueño llega como nombre y no como `sub`.** Los nombres se piden a Auth0 de a toda la página junta y se cachean 5 minutos; si Auth0 no contesta, en `author` viaja el `sub` y el listado igual sale 200. Un listado sin nombres es peor que uno con ids, pero mucho mejor que un error.
+- **`owned` dice si el que pide es el dueño**, también en el detalle, al crear, al editar y al compartir. La UI lo usa para no ofrecer borrar, editar ni compartir un snippet que le compartieron (todos darían 404). Va calculado y no como el `sub` del dueño: `author` es un nombre para mostrar y dos usuarios pueden llamarse igual, y mandar el `sub` le pasaría a cada uno el identificador de los demás para que la UI repita una regla que ya vive acá.
 
 ### Un snippet
 
