@@ -40,8 +40,6 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-websocket")
 
     // Caché de los nombres de los dueños: TTL y tope de tamaño. Sin versión, la administra Boot.
-    // A mano serían veinte líneas, y las dos cosas que se hacen mal en un caché escrito a mano son
-    // justo esas: que no venza bien y que crezca sin límite
     implementation("com.github.ben-manes.caffeine:caffeine")
 
     testImplementation("org.testcontainers:testcontainers")

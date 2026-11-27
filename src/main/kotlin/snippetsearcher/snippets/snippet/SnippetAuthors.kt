@@ -48,21 +48,22 @@ class SnippetAuthors(
      * una caída de Auth0 de un segundo dejaría a todos los snippets mostrando el `sub` por lo que
      * dure el TTL. El precio es que mientras Auth0 esté caído se le vuelve a preguntar en cada
      * pedido, que es lo correcto: lo que falló tiene que poder recuperarse solo.
+     *
+     * El mismo precio lo paga un usuario **borrado** de Auth0: nunca entra al caché, así que una
+     * página con snippets compartidos por alguien que ya no existe le pregunta a Auth0 en cada
+     * carga. Para mostrar el nombre, "no existe" y "no contestó" son el mismo caso; para el caché
+     * no lo son, pero distinguirlos obliga al directorio a decir cuál de los dos fue.
      */
     fun namesOf(ownerIds: Collection<String>): Map<String, String> {
         val distintos = ownerIds.toSet()
         if (distintos.isEmpty()) return emptyMap()
 
-        val cacheados = nombres.getAllPresent(distintos)
-        val faltantes = distintos - cacheados.keys
-        val resueltos =
-            if (faltantes.isEmpty()) {
-                emptyMap()
-            } else {
-                directory.namesOf(faltantes).also { nombres.putAll(it) }
-            }
+        // getAll hace las tres cosas: busca en el caché, le pide al directorio SOLO los que faltan y
+        // cachea lo que vuelve. Los ids que el directorio no devolvió no entran al caché, que es
+        // justo lo que hace falta para que el sub no quede pegado
+        val resueltos = nombres.getAll(distintos) { faltantes -> directory.namesOf(faltantes) }
 
-        return distintos.associateWith { cacheados[it] ?: resueltos[it] ?: it }
+        return distintos.associateWith { resueltos[it] ?: it }
     }
 
     /** El nombre de un solo dueño, para las respuestas de un snippet puntual. */
