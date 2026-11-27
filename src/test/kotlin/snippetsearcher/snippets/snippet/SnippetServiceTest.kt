@@ -99,6 +99,20 @@ class SnippetServiceTest(
     }
 
     @Test
+    fun `no guarda un snippet con un lenguaje que no existe ni valida su codigo`() {
+        val before = repository.count()
+
+        val result = service.create(owner, saludo.copy(language = "python"))
+
+        val rejected = assertIs<CreateSnippetResult.Rejected>(result)
+        assertEquals("El lenguaje 'python' no existe", rejected.message)
+        assertNull(printScript.lastVersion)
+        assertEquals(before, repository.count())
+        assertEquals(0, asset.count())
+        assertEquals(0, permissions.count())
+    }
+
+    @Test
     fun `el contenido queda guardado en el asset service y no en la base`() {
         val result = service.create(owner, saludo)
 
@@ -308,6 +322,21 @@ class SnippetServiceTest(
 
         val rejected = assertIs<UpdateSnippetResult.Rejected>(result)
         assertEquals("La versión '1.3' no existe", rejected.message)
+        assertSigueIgual(snippet.id)
+    }
+
+    @Test
+    fun `con un lenguaje que no existe no cambia nada ni valida el codigo`() {
+        val snippet = created()
+        // created() ya validó el código al crear el snippet: se borra para probar solo el update
+        printScript.lastVersion = null
+
+        val result = service.update(owner, snippet.id, despedida.copy(language = "python"))
+
+        val rejected = assertIs<UpdateSnippetResult.Rejected>(result)
+        assertEquals("El lenguaje 'python' no existe", rejected.message)
+        assertNull(printScript.lastVersion)
+        assertEquals("printscript", repository.findById(snippet.id).orElseThrow().language)
         assertSigueIgual(snippet.id)
     }
 
