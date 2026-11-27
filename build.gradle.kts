@@ -39,6 +39,9 @@ dependencies {
     // El relay de la ejecución interactiva: WebSocket con el browser de un lado y con PrintScript del otro
     implementation("org.springframework.boot:spring-boot-starter-websocket")
 
+    // Caché de los nombres de los dueños: TTL y tope de tamaño. Sin versión, la administra Boot.
+    implementation("com.github.ben-manes.caffeine:caffeine")
+
     testImplementation("org.testcontainers:testcontainers")
 
     newRelicAgent("com.newrelic.agent.java:newrelic-agent:$newRelicVersion")
