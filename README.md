@@ -266,6 +266,24 @@ POST /snippets/{snippetId}/tests/run
 - **`error` solo viene si el snippet se cortó antes de terminar.** Un test puede fallar sin error (imprimió otra cosa) o fallar con error (se murió en la línea 3).
 - Status: `200` con el resultado —**también si el test no pasa**, porque el pedido estuvo bien—, `400` si la versión del snippet no existe, `404`, `500` si falta el contenido, `502` si PrintScript no contestó.
 
+### Formatear un snippet
+
+```
+POST /snippets/{id}/format
+{ "content": "let a:number=1;" }
+```
+
+```json
+{ "content": "let a: number = 1;\n" }
+```
+
+- **No guarda nada.** Devuelve el código formateado y el snippet queda como estaba: para cambiarlo, la UI hace el `PUT`.
+- **El contenido viaja en el body**, como el test al correrlo: se formatea lo que está en el editor, aunque no esté guardado. Para descargar la versión formateada, la UI manda el contenido guardado y baja lo que vuelve.
+- **La versión es la del snippet y las reglas son las de formateo activas de su dueño**, no las de quien pide.
+- **Quien tiene lectura puede formatear**, no solo el dueño: formatear no cambia nada y es lo que permite descargar la versión formateada de un snippet compartido.
+- La respuesta es un objeto y no el texto suelto, para poder sumarle campos sin romper a la UI.
+- Status: `200`, `400` con el mensaje de PrintScript si no pudo formatear (el código no se puede analizar, es muy grande o una regla guardada ya no sirve), `404` si no existe o no lo podés leer, `500` si el lenguaje del snippet no está en el catálogo (son nuestros datos los inconsistentes), `502` si PrintScript o Permisos no contestaron.
+
 ### Usuarios y lenguajes
 
 ```
