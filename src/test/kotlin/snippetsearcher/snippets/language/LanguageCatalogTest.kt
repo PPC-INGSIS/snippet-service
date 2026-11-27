@@ -71,4 +71,13 @@ class LanguageCatalogTest {
 
         assertNull(catalog.find("python"))
     }
+
+    // Misma regla para buscar el lenguaje y su extensión: si no, un snippet mostraría extensión y no se podría editar
+    @Test
+    fun `con otras mayusculas no se encuentra el lenguaje ni su extension`() {
+        val catalog = LanguageCatalog(listOf(language("printscript", "ps")))
+
+        assertNull(catalog.find("PrintScript"))
+        assertEquals("", catalog.extensionOf("PrintScript"))
+    }
 }
