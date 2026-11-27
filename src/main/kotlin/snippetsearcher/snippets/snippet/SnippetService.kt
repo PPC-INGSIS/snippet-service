@@ -134,25 +134,45 @@ class SnippetService(
         // El id como desempate, aunque nadie ordene por id: dos snippets con el mismo nombre
         // quedarían en el orden que Postgres quiera, y ese orden puede cambiar entre dos
         // pedidos, así que la UI podría ver una misma fila en dos páginas y nunca ver otra.
-        val sort = Sort.by(direction, field.field).and(Sort.by(Sort.Direction.ASC, "id"))
+        val sort = Sort.by(direction, field.property).and(Sort.by(Sort.Direction.ASC, "id"))
 
-        val visible =
-            when (val result = visibleTo(ownerId, query.relation.filtro())) {
+        val filters =
+            when (val result = filtersFor(ownerId, query)) {
                 is Visible.By -> result.filter
                 is Visible.Rejected -> return result.reason
             }
 
-        val filters =
+        val pagina = repository.findAll(filters, PageRequest.of(query.page, query.pageSize, sort))
+        return ListSnippetsResult.Listed(pagina.content, pagina.totalElements)
+    }
+
+    // Los filtros que vinieron, junto con la visibilidad, que está siempre
+    private fun filtersFor(
+        userId: String,
+        query: SnippetQuery,
+    ): Visible {
+        // Antes que la visibilidad: un pedido inválido no tiene por qué consultar a Permisos
+        val lintStatus =
+            query.compliance.filtro()?.let {
+                LintStatus.from(it) ?: return Visible.Rejected(ListSnippetsResult.ComplianceNotAllowed(it))
+            }
+
+        val visible =
+            when (val result = visibleTo(userId, query.relation.filtro())) {
+                is Visible.By -> result.filter
+                is Visible.Rejected -> return result
+            }
+
+        return Visible.By(
             Specification.allOf(
                 listOfNotNull(
                     visible,
                     query.name.filtro()?.let { SnippetFilters.nameContains(it) },
                     query.language.filtro()?.let { SnippetFilters.writtenIn(it) },
+                    lintStatus?.let { SnippetFilters.withLintStatus(it) },
                 ),
-            )
-
-        val pagina = repository.findAll(filters, PageRequest.of(query.page, query.pageSize, sort))
-        return ListSnippetsResult.Listed(pagina.content, pagina.totalElements)
+            ),
+        )
     }
 
     /**
@@ -236,7 +256,7 @@ data class NewSnippet(
     val content: String,
 )
 
-// El filtro de visibilidad del listado, o por qué no se pudo armar (relation inválida, Permisos caído)
+// Un filtro del listado, o por qué no se pudo armar (relation o compliance inválidos, Permisos caído)
 private sealed interface Visible {
     data class By(
         val filter: Specification<Snippet>,

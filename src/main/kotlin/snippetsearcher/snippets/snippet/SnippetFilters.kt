@@ -39,6 +39,11 @@ internal object SnippetFilters {
             criteria.equal(criteria.lower(snippet.get("language")), language.lowercase())
         }
 
+    fun withLintStatus(status: LintStatus) =
+        Specification<Snippet> { snippet, _, criteria ->
+            criteria.equal(snippet.get<LintStatus>("lintStatus"), status)
+        }
+
     private const val ESCAPE = '\\'
 
     private fun escapeWildcards(value: String) =
