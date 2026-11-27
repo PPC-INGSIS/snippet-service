@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Import
 import org.springframework.test.context.TestPropertySource
 import org.springframework.web.socket.CloseStatus
 import org.springframework.web.socket.TextMessage
+import org.springframework.web.socket.WebSocketHttpHeaders
 import org.springframework.web.socket.WebSocketSession
 import org.springframework.web.socket.client.standard.StandardWebSocketClient
 import org.springframework.web.socket.handler.TextWebSocketHandler
@@ -21,6 +22,7 @@ import snippetsearcher.snippets.permissions.FakePermissionsConfiguration
 import snippetsearcher.snippets.printscript.FakePrintScriptConfiguration
 import snippetsearcher.snippets.snippet.Snippet
 import snippetsearcher.snippets.snippet.SnippetRepository
+import java.net.URI
 import java.util.UUID
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.LinkedBlockingQueue
@@ -189,6 +191,18 @@ class ExecutionRelayTest(
         conectar(id).manda("""{"type":"auth","token":"$TOKEN_DE_BETO"}""")
 
         esperarQueArranque()
+    }
+
+    @Test
+    fun `detras de nginx, con el prefijo de la API, el id del snippet se lee igual`() {
+        val id = guardar(ana)
+        // Lo que manda nginx: con este header Spring le vuelve a poner el /api a la URI de la sesión
+        val nginx = WebSocketHttpHeaders().apply { add("X-Forwarded-Prefix", "/api") }
+
+        conectar(id, nginx).manda("""{"type":"auth","token":"$TOKEN_DE_ANA"}""")
+        esperarQueArranque()
+
+        assertEquals("println(1);", executions.starts.single().code)
     }
 
     @Test
@@ -383,7 +397,10 @@ class ExecutionRelayTest(
         assertTrue(condicion(), "no se cumplió la condición esperada en 5 s")
     }
 
-    private fun conectar(snippetId: UUID): Browser {
+    private fun conectar(
+        snippetId: UUID,
+        headers: WebSocketHttpHeaders = WebSocketHttpHeaders(),
+    ): Browser {
         val mensajes = LinkedBlockingQueue<String>()
         val cierres = LinkedBlockingQueue<CloseStatus>()
 
@@ -406,7 +423,7 @@ class ExecutionRelayTest(
 
         val session =
             StandardWebSocketClient()
-                .execute(handler, "ws://localhost:$port/snippets/$snippetId/execution")
+                .execute(handler, headers, URI("ws://localhost:$port/snippets/$snippetId/execution"))
                 .get(5, TimeUnit.SECONDS)
 
         return Browser(session, mensajes, cierres).also { abiertos += it }

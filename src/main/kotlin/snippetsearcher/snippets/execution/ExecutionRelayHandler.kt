@@ -176,9 +176,15 @@ class ExecutionRelayHandler(
             .onFailure { log.debug("No se pudo cerrar la conexión con el browser", it) }
     }
 
-    // El id sale de la ruta, /snippets/{id}/execution: el handler se registra con un patrón, no con @PathVariable
+    /*
+     * El id sale de la ruta, /snippets/{id}/execution: el handler se registra con un patrón, no con
+     * @PathVariable. Se toma el tramo anterior a "execution" y no una posición fija porque la ruta
+     * puede traer un prefijo adelante: detrás de nginx, X-Forwarded-Prefix hace que Spring le vuelva a
+     * poner el /api a la URI de la sesión, y el id deja de estar en el mismo lugar.
+     */
     private fun snippetIdDe(session: WebSocketSession): UUID? {
-        val id = session.uri?.path?.split("/")?.getOrNull(2) ?: return null
+        val tramos = session.uri?.path?.split("/") ?: return null
+        val id = tramos.getOrNull(tramos.lastIndexOf("execution") - 1) ?: return null
         return runCatching { UUID.fromString(id) }.getOrNull()
     }
 
