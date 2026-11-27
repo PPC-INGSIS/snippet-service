@@ -25,6 +25,7 @@ class RuleServiceTest(
     @Autowired private val printScript: FakePrintScriptClient,
 ) {
     private val ana = "auth0|ana-${UUID.randomUUID()}"
+    private val beto = "auth0|beto-${UUID.randomUUID()}"
 
     private val ifIndent = RuleDefinition("if-indent", "Espacios de indentación dentro de un if", "1.1", 4)
     private val lineBreak =
@@ -35,6 +36,17 @@ class RuleServiceTest(
         printScript.clear()
         printScript.rulesResult = RulesResult.Found(listOf(ifIndent, lineBreak))
     }
+
+    private fun save(
+        ownerId: String,
+        kind: RuleKind,
+        vararg rules: UserRuleData,
+    ) = savedRules.replace(
+        ownerId,
+        LANGUAGE,
+        kind,
+        rules.map { SavedRule(SavedRuleId(ownerId, LANGUAGE, kind, it.id), it.active, it.value) },
+    )
 
     @Test
     fun `combina lo guardado con el catalogo, en el orden del lenguaje`() {
@@ -100,6 +112,54 @@ class RuleServiceTest(
         )
 
         assertEquals(mapOf("if-indent" to 2, "line-break-after-statement" to true), printScript.lastValidatedRules)
+    }
+
+    @Test
+    fun `las reglas activas son solo las que estan habilitadas`() {
+        save(
+            ana,
+            RuleKind.FORMAT,
+            UserRuleData("if-indent", true, 2),
+            UserRuleData("space-before-colon", false, "never"),
+        )
+
+        assertEquals(mapOf("if-indent" to 2), service.activeRules(ana, LANGUAGE, RuleKind.FORMAT))
+    }
+
+    @Test
+    fun `un flag activo sale como true`() {
+        save(ana, RuleKind.FORMAT, UserRuleData("line-break-after-statement", true, null))
+
+        assertEquals(mapOf("line-break-after-statement" to true), service.activeRules(ana, LANGUAGE, RuleKind.FORMAT))
+    }
+
+    @Test
+    fun `una regla activa con valor sale con su valor, sea texto o numero`() {
+        save(
+            ana,
+            RuleKind.FORMAT,
+            UserRuleData("if-indent", true, 2),
+            UserRuleData("space-before-colon", true, "never"),
+        )
+
+        assertEquals(
+            mapOf("if-indent" to 2, "space-before-colon" to "never"),
+            service.activeRules(ana, LANGUAGE, RuleKind.FORMAT),
+        )
+    }
+
+    @Test
+    fun `sin reglas guardadas no hay reglas activas`() {
+        assertEquals(emptyMap(), service.activeRules(ana, LANGUAGE, RuleKind.LINT))
+    }
+
+    @Test
+    fun `las reglas activas no incluyen las de otro usuario ni las de otro kind`() {
+        save(ana, RuleKind.FORMAT, UserRuleData("if-indent", true, 2))
+        save(ana, RuleKind.LINT, UserRuleData("max-length", true, 80))
+        save(beto, RuleKind.FORMAT, UserRuleData("if-indent", true, 8))
+
+        assertEquals(mapOf("if-indent" to 2), service.activeRules(ana, LANGUAGE, RuleKind.FORMAT))
     }
 
     companion object {
