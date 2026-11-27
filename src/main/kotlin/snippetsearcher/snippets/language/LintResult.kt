@@ -1,12 +1,18 @@
 package snippetsearcher.snippets.language
 
+// Reintentar sirve para Failed y no para Rejected: ante el mismo pedido, el lenguaje va a rechazarlo igual
 sealed interface LintResult {
     // El lenguaje linteó el código. Lista vacía = cumple las reglas
     data class Linted(
         val violations: List<LintViolation>,
     ) : LintResult
 
-    // No se pudo lintear: el lenguaje no pudo analizar el código, rechazó el pedido o no contestó
+    // El lenguaje no lo linteó: versión o reglas inválidas, código muy grande o que no pudo analizar
+    data class Rejected(
+        val message: String,
+    ) : LintResult
+
+    // El servicio del lenguaje falló o no contestó
     data class Failed(
         val message: String,
     ) : LintResult

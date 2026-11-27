@@ -564,7 +564,7 @@ class HttpPrintScriptClientTest {
     }
 
     @Test
-    fun `lint con un 200 con error devuelve Failed`() {
+    fun `lint con un 200 con error devuelve Rejected con el mensaje del error`() {
         response =
             """
             {"violations":[],"error":{"message":"El código tiene demasiados niveles de anidamiento",
@@ -573,16 +573,29 @@ class HttpPrintScriptClientTest {
 
         val result = client().lint("1.1", "println(((((1)))));", emptyMap())
 
-        assertEquals(LintResult.Failed("No se pudo lintear el snippet"), result)
+        assertEquals(LintResult.Rejected("El código tiene demasiados niveles de anidamiento"), result)
     }
 
     @Test
-    fun `lint con un 400 de PrintScript devuelve Failed`() {
+    fun `lint con un 400 de PrintScript devuelve Rejected con su detalle`() {
         status = 400
         contentType = "application/problem+json"
         response = """{"title":"Bad Request","status":400,"detail":"La versión '9.9' no existe"}"""
 
-        assertIs<LintResult.Failed>(client().lint("9.9", "let a: number = 1;", emptyMap()))
+        val result = client().lint("9.9", "let a: number = 1;", emptyMap())
+
+        assertEquals(LintResult.Rejected("La versión '9.9' no existe"), result)
+    }
+
+    @Test
+    fun `lint con un 413 sin detail devuelve Rejected con el texto por defecto`() {
+        status = 413
+        contentType = "application/problem+json"
+        response = """{"title":"Payload Too Large","status":413}"""
+
+        val result = client().lint("1.1", "let a: number = 1;", emptyMap())
+
+        assertEquals(LintResult.Rejected("PrintScript rechazó el pedido"), result)
     }
 
     @Test

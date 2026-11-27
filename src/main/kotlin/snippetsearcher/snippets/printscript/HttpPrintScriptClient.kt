@@ -204,14 +204,19 @@ class HttpPrintScriptClient(
                     log.warn("PrintScript respondió POST /lint sin body")
                     LintResult.Failed(LINT_FAILED)
                 }
-                response.error != null -> {
-                    log.warn("PrintScript no pudo analizar el código al lintear: {}", response.error.message)
-                    LintResult.Failed(LINT_FAILED)
-                }
+                response.error != null ->
+                    LintResult.Rejected(response.error.message?.takeUnless { it.isBlank() } ?: DEFAULT_REJECTION)
                 else -> LintResult.Linted(response.violations)
             }
+        } catch (exception: HttpClientErrorException) {
+            if (exception.statusCode.value() in REJECTED_STATUSES) {
+                LintResult.Rejected(rejection(exception).detailOrDefault())
+            } else {
+                log.warn(LINT_FAILED_LOG, exception)
+                LintResult.Failed(LINT_FAILED)
+            }
         } catch (exception: RestClientException) {
-            // Un 400, un 413, un 5xx, un timeout o PrintScript caído. El detalle va al log y no al resultado:
+            // Un 5xx, un timeout o PrintScript caído. El detalle va al log y no al resultado:
             // el mensaje de la excepción trae la URL y el puerto internos
             log.warn(LINT_FAILED_LOG, exception)
             LintResult.Failed(LINT_FAILED)
@@ -329,7 +334,7 @@ data class LintResponse(
 )
 
 data class LintErrorResponse(
-    val message: String,
+    val message: String? = null,
 )
 
 // Respuesta 400 o 413 de printscript-service, en formato Problem Details (RFC 9457).
