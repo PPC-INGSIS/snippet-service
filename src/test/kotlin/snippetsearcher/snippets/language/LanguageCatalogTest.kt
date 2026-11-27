@@ -27,6 +27,12 @@ class LanguageCatalogTest {
             kind: RuleKind,
             rules: Map<String, Any?>,
         ) = RulesValidationResult.Valid
+
+        override fun lint(
+            version: String,
+            content: String,
+            rules: Map<String, Any>,
+        ) = LintResult.Linted(emptyList())
     }
 
     @Test

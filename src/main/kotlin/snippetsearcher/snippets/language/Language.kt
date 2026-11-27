@@ -18,4 +18,10 @@ interface Language {
         kind: RuleKind,
         rules: Map<String, Any?>,
     ): RulesValidationResult
+
+    fun lint(
+        version: String,
+        content: String,
+        rules: Map<String, Any>,
+    ): LintResult
 }

@@ -1,5 +1,6 @@
 package snippetsearcher.snippets.printscript
 
+import snippetsearcher.snippets.language.LintResult
 import snippetsearcher.snippets.language.RuleKind
 import snippetsearcher.snippets.language.RulesResult
 import snippetsearcher.snippets.language.RulesValidationResult
@@ -33,6 +34,12 @@ interface PrintScriptClient {
         kind: RuleKind,
         rules: Map<String, Any?>,
     ): RulesValidationResult
+
+    fun lint(
+        version: String,
+        content: String,
+        rules: Map<String, Any>,
+    ): LintResult
 }
 
 sealed interface ExecutionResult {

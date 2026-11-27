@@ -2,6 +2,7 @@ package snippetsearcher.snippets.printscript
 
 import org.springframework.stereotype.Component
 import snippetsearcher.snippets.language.Language
+import snippetsearcher.snippets.language.LintResult
 import snippetsearcher.snippets.language.RuleKind
 import snippetsearcher.snippets.language.RulesResult
 import snippetsearcher.snippets.language.RulesValidationResult
@@ -28,4 +29,10 @@ class PrintScriptLanguage(
         kind: RuleKind,
         rules: Map<String, Any?>,
     ): RulesValidationResult = client.validateRules(kind, rules)
+
+    override fun lint(
+        version: String,
+        content: String,
+        rules: Map<String, Any>,
+    ): LintResult = client.lint(version, content, rules)
 }
