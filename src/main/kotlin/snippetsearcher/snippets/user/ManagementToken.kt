@@ -2,6 +2,7 @@ package snippetsearcher.snippets.user
 
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
+import snippetsearcher.snippets.auth0.AUTH0_TIMEOUT
 import snippetsearcher.snippets.auth0.ClientCredentialsToken
 import java.time.Clock
 import java.time.Duration

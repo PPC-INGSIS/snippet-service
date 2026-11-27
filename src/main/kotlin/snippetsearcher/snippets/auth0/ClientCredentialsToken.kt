@@ -8,6 +8,11 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 
+// Cuánto se espera a Auth0 como máximo, para conectarse y para cada respuesta
+private const val AUTH0_TIMEOUT_SECONDS = 5L
+
+internal val AUTH0_TIMEOUT: Duration = Duration.ofSeconds(AUTH0_TIMEOUT_SECONDS)
+
 /**
  * Un token de Auth0 pedido con el flujo Client Credentials, para una audiencia.
  *
@@ -19,8 +24,8 @@ class ClientCredentialsToken(
     private val audience: String,
     private val clientId: String,
     private val clientSecret: String,
-    private val clock: Clock,
-    timeout: Duration,
+    private val clock: Clock = Clock.systemUTC(),
+    timeout: Duration = AUTH0_TIMEOUT,
 ) {
     // Sin el token del usuario: a Auth0 se le habla con las credenciales de la app
     private val restClient = timedRestClient(url, timeout, timeout)

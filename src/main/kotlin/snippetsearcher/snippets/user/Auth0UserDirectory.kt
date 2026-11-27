@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
+import snippetsearcher.snippets.auth0.AUTH0_TIMEOUT
 import java.time.Duration
 
 // Busca usuarios en Auth0 con la Management API (GET /api/v2/users)
