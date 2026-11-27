@@ -5,12 +5,18 @@ import com.sun.net.httpserver.HttpServer
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken
+import snippetsearcher.snippets.security.UserAccessToken
 import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
 import java.time.Duration
 import java.util.UUID
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -37,10 +43,20 @@ class HttpPermissionsClientTest {
         server.createContext("/") { exchange -> responder(exchange) }
         server.start()
         client = clienteCon(READ_TIMEOUT)
+        // Como en un pedido: el usuario autenticado está en el contexto del hilo
+        val jwt =
+            Jwt
+                .withTokenValue(TOKEN)
+                .header("alg", "none")
+                .subject("auth0|ana")
+                .build()
+        SecurityContextHolder.getContext().authentication = JwtAuthenticationToken(jwt)
     }
 
+    // El contexto es por hilo y los tests comparten hilo: si no se limpia, un test le pasa el usuario al siguiente
     @AfterEach
     fun bajarServidor() {
+        SecurityContextHolder.clearContext()
         server.stop(0)
     }
 
@@ -49,7 +65,17 @@ class HttpPermissionsClientTest {
             "http://127.0.0.1:${server.address.port}",
             CONNECT_TIMEOUT,
             readTimeout,
-        ) { TOKEN }
+            UserAccessToken(),
+        )
+
+    // Como el WebSocket de ejecución o un trabajo de Redis: no hay usuario en el hilo
+    @Test
+    fun `sin usuario en el hilo falla antes de llamar a Permisos en vez de mandar otro token`() {
+        SecurityContextHolder.clearContext()
+
+        assertFailsWith<IllegalStateException> { client.roleOf(UUID.randomUUID(), "auth0|beto") }
+        assertNull(receivedPath)
+    }
 
     private fun responder(exchange: HttpExchange) {
         receivedMethod = exchange.requestMethod
