@@ -8,6 +8,7 @@ No ejecuta ni valida código. Para eso le pide al servicio del lenguaje que corr
 
 - Los datos del snippet: nombre, descripción, lenguaje, versión y dueño.
 - Los tests de cada snippet: nombre, entradas y salidas esperadas.
+- Las reglas de formateo y de linteo que eligió cada usuario: si están activas y su valor. Solo las que tocó: las demás salen con el default de PrintScript.
 
 Lo que **no** guarda: el contenido del snippet (está en el asset service), quién tiene acceso a qué (está en Permisos) y el resultado de correr un test, que se calcula y se devuelve en el momento.
 ## Stack
@@ -271,21 +272,46 @@ Las versiones las sabe PrintScript, así que es el único de los dos que puede d
 ```
 GET /rules/format
 GET /rules/lint
+PUT /rules/format
+PUT /rules/lint
 ```
 
-Devuelven las reglas de formateo o de linteo del usuario, en el orden en que las da PrintScript:
+Los `GET` devuelven las reglas de formateo o de linteo del usuario, en el orden en que las da PrintScript:
 
 ```json
 [
-  { "id": "if-indent", "name": "Espacios de indentación dentro de un if", "since": "1.1", "isActive": false, "value": 4 },
+  { "id": "if-indent", "name": "Espacios de indentación dentro de un if", "since": "1.1", "isActive": true, "value": 2 },
   { "id": "line-break-after-statement", "name": "Salto de línea después de cada sentencia", "since": "1.0", "isActive": false, "value": null }
 ]
 ```
 
 - **Las reglas las sabe PrintScript, no Snippets.** Se piden a su `GET /rules/{kind}` sin versión, así que vienen las de la última: las reglas son del usuario, no de un snippet. `name` es la descripción que da PrintScript.
-- **Por ahora salen todas deshabilitadas**, con el default de PrintScript como `value`. Todavía no se pueden guardar por usuario. Las reglas de tipo flag no tienen default, así que su `value` es `null`.
+- **Snippets guarda lo que eligió cada usuario.** Una regla que el usuario nunca guardó sale deshabilitada, con el default de PrintScript como `value`. Las reglas de tipo flag no tienen valor, así que su `value` es `null`. Una regla guardada que PrintScript ya no tiene no sale.
 - **`since` dice desde qué versión de PrintScript corre la regla.** Un usuario puede activar una regla de 1.1 aunque tenga snippets 1.0: PrintScript no la aplica en esos snippets y la informa como ignorada. Con `since` la UI puede avisarlo.
 - Status: `200`, o `502` si PrintScript no contestó.
+
+Los `PUT` reemplazan las reglas de ese tipo con la lista que mandó la UI. El body:
+
+```json
+[
+  { "id": "if-indent", "isActive": true, "value": 2 },
+  { "id": "line-break-after-statement", "isActive": false, "value": null }
+]
+```
+
+- **El reemplazo es total.** Una regla guardada que no viene en la lista deja de estar guardada y vuelve a su default. Así funciona la UI, que manda siempre la lista entera. Se aceptan más campos (`name`, `since`), y se ignoran.
+- **Deshabilitar no pierde el valor.** `isActive` y `value` se guardan por separado: una regla con `"isActive": false, "value": 2` vuelve a salir con `2`.
+- **Valida PrintScript, no Snippets.** Antes de guardar se manda cada regla a su `POST /rules/{kind}/validate`, con el `value` como valor o, si es `null`, con `isActive`, que es lo que espera un flag. Si alguna no existe o su valor no sirve, no se guarda nada.
+- Status:
+  - `200` con la lista resultante, con la misma forma que el `GET`.
+  - `400` si una regla no existe, si su valor no sirve o si un id viene repetido. La propiedad `rule` dice cuál:
+
+    ```json
+    { "title": "Bad Request", "status": 400, "detail": "La regla 'if-indent' acepta valores entre 0 y 8, se recibió 12", "instance": "/rules/format", "rule": "if-indent" }
+    ```
+
+    El `detail` es el de PrintScript, salvo el de un id repetido: `La regla 'if-indent' está repetida`.
+  - `502` si PrintScript no contestó. No se guarda nada.
 
 ### La ejecución interactiva (WebSocket)
 
