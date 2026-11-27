@@ -1,6 +1,7 @@
 package snippetsearcher.snippets.printscript
 
 import org.springframework.stereotype.Component
+import snippetsearcher.snippets.language.FormatResult
 import snippetsearcher.snippets.language.Language
 import snippetsearcher.snippets.language.LintResult
 import snippetsearcher.snippets.language.RuleKind
@@ -35,4 +36,10 @@ class PrintScriptLanguage(
         content: String,
         rules: Map<String, Any>,
     ): LintResult = client.lint(version, content, rules)
+
+    override fun format(
+        version: String,
+        content: String,
+        rules: Map<String, Any>,
+    ): FormatResult = client.format(version, content, rules)
 }
