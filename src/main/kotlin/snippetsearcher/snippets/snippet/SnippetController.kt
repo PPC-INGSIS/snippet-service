@@ -68,6 +68,11 @@ class SnippetController(
                     "relation tiene que ser ${SnippetRelation.values.joinToString(", ")}, no '${result.relation}'",
                 )
 
+            is ListSnippetsResult.ComplianceNotAllowed ->
+                badRequest(
+                    "compliance tiene que ser ${LintStatus.values.joinToString(", ")}, no '${result.compliance}'",
+                )
+
             // 502: el pedido estaba bien, falló Permisos, que es el que sabe qué te compartieron
             is ListSnippetsResult.SharedUnavailable ->
                 ResponseEntity
@@ -295,10 +300,11 @@ data class ListSnippetsRequest(
     val sortDirection: String? = null,
     // owned, shared o all (por defecto): los propios, los compartidos o los dos
     val relation: String? = null,
+    val compliance: String? = null,
 )
 
 private fun ListSnippetsRequest.toQuery() =
-    SnippetQuery(page, pageSize, snippetName, language, sortBy, sortDirection, relation)
+    SnippetQuery(page, pageSize, snippetName, language, sortBy, sortDirection, relation, compliance)
 
 data class CreateSnippetRequest(
     val name: String,
@@ -332,6 +338,7 @@ data class SnippetResponse(
      * quién es dueño vive acá, y a nadie le llega el identificador de los demás.
      */
     val owned: Boolean,
+    val compliance: String,
 )
 
 // La forma que espera la UI (PaginatedSnippets en printscript-ui)
@@ -352,6 +359,7 @@ data class SnippetDetailResponse(
     val extension: String,
     val author: String,
     val owned: Boolean,
+    val compliance: String,
     val content: String,
 )
 
@@ -363,14 +371,25 @@ private fun Snippet.toResponse(
     author: String,
     extension: String,
     callerId: String,
-) = SnippetResponse(id, name, description, language, version, extension, author, ownerId == callerId)
+) = SnippetResponse(id, name, description, language, version, extension, author, ownerId == callerId, lintStatus.value)
 
 private fun Snippet.toDetailResponse(
     author: String,
     extension: String,
     content: String,
     callerId: String,
-) = SnippetDetailResponse(id, name, description, language, version, extension, author, ownerId == callerId, content)
+) = SnippetDetailResponse(
+    id,
+    name,
+    description,
+    language,
+    version,
+    extension,
+    author,
+    ownerId == callerId,
+    lintStatus.value,
+    content,
+)
 
 data class RejectedSnippetResponse(
     val message: String,

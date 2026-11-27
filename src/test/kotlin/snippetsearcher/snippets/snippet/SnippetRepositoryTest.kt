@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.context.annotation.Import
+import org.springframework.jdbc.core.JdbcTemplate
 import snippetsearcher.snippets.TestcontainersConfiguration
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -12,6 +13,7 @@ import kotlin.test.assertEquals
 @SpringBootTest
 class SnippetRepositoryTest(
     @Autowired private val repository: SnippetRepository,
+    @Autowired private val jdbc: JdbcTemplate,
 ) {
     @Test
     fun `guarda un snippet y lo recupera por id`() {
@@ -59,5 +61,22 @@ class SnippetRepositoryTest(
         assertEquals("Saludo final", found.name)
         assertEquals("v2", found.description)
         assertEquals("1.1", found.version)
+    }
+
+    // Por SQL y sin la columna, como las filas que ya existían antes de la migración
+    @Test
+    fun `un snippet insertado sin estado de linteo queda pending`() {
+        val id = UUID.randomUUID()
+        jdbc.update(
+            "INSERT INTO snippets (id, owner_id, name, description, language, version) VALUES (?, ?, ?, ?, ?, ?)",
+            id,
+            "auth0|ana",
+            "Viejo",
+            "de antes",
+            "printscript",
+            "1.1",
+        )
+
+        assertEquals(LintStatus.PENDING, repository.findById(id).orElseThrow().lintStatus)
     }
 }

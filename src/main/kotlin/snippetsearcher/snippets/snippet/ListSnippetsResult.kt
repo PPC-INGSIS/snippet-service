@@ -20,6 +20,11 @@ sealed interface ListSnippetsResult {
         val relation: String,
     ) : ListSnippetsResult
 
+    /** Pidió un estado de linteo que no es pending, compliant, not-compliant ni failed. */
+    data class ComplianceNotAllowed(
+        val compliance: String,
+    ) : ListSnippetsResult
+
     /** Había que preguntarle a Permisos qué le compartieron y no contestó. */
     data class SharedUnavailable(
         val message: String,

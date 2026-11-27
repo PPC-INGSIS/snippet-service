@@ -6,7 +6,7 @@ package snippetsearcher.snippets.snippet
  * El dueño va aparte y no acá: no lo elige quien pregunta, sale del token.
  * `relation` en null es "all": los propios y los compartidos.
  *
- * `name` y `language` en null (o en blanco) significan "sin filtrar". `sortBy` y
+ * `name`, `language` y `compliance` en null (o en blanco) significan "sin filtrar". `sortBy` y
  * `sortDirection` llegan como texto a propósito: los valida el servicio, que es el que
  * sabe qué campos son ordenables, y un valor que no acepta termina en un 400 y no en un 500.
  */
@@ -18,6 +18,7 @@ data class SnippetQuery(
     val sortBy: String? = null,
     val sortDirection: String? = null,
     val relation: String? = null,
+    val compliance: String? = null,
 )
 
 /**
@@ -49,9 +50,12 @@ enum class SnippetRelation(
  */
 enum class SnippetSortField(
     val field: String,
+    // La propiedad de Snippet, cuando no se llama igual que en la API
+    val property: String = field,
 ) {
     NAME("name"),
     LANGUAGE("language"),
+    COMPLIANCE("compliance", "lintStatus"),
     ;
 
     companion object {

@@ -7,6 +7,7 @@ No ejecuta ni valida código. Para eso le pide al servicio del lenguaje que corr
 ## Qué guarda
 
 - Los datos del snippet: nombre, descripción, lenguaje, versión y dueño.
+- El estado de linteo de cada snippet: si cumple las reglas de linteo de su dueño. Solo el estado, no las violaciones.
 - Los tests de cada snippet: nombre, entradas y salidas esperadas.
 - Las reglas de formateo y de linteo que eligió cada usuario: si están activas y su valor. Solo las que tocó: las demás salen con el default de PrintScript.
 
@@ -108,9 +109,10 @@ GET /snippets
 | `page_size` | `10` | Cuántos por página, entre 1 y 100. En **snake_case** |
 | `snippetName` | — | Filtra por nombre: contiene, sin distinguir mayúsculas |
 | `language` | — | Filtra por lenguaje: igualdad exacta, sin distinguir mayúsculas |
-| `sortBy` | `name` | `name` o `language` |
+| `sortBy` | `name` | `name`, `language` o `compliance` |
 | `sortDirection` | `asc` | `asc` o `desc` |
 | `relation` | `all` | `owned` (los propios), `shared` (los que me compartieron) o `all` (los dos) |
+| `compliance` | — | Filtra por estado de linteo: `pending`, `compliant`, `not-compliant` o `failed` |
 
 ```json
 {
@@ -126,7 +128,8 @@ GET /snippets
       "version": "1.1",
       "extension": "ps",
       "author": "Lucho Calvani",
-      "owned": true
+      "owned": true,
+      "compliance": "compliant"
     }
   ]
 }
@@ -135,7 +138,7 @@ GET /snippets
 | Status | Cuándo |
 |---|---|
 | `200` | Siempre que el pedido sea válido, incluso si no hay resultados (`count: 0`, `snippets: []`) |
-| `400` | `sortBy`, `sortDirection` o `relation` con un valor que no está en la lista, o `page` negativo, o `page_size` fuera de 1..100. El `detail` dice qué valores se aceptan |
+| `400` | `sortBy`, `sortDirection`, `relation` o `compliance` con un valor que no está en la lista, o `page` negativo, o `page_size` fuera de 1..100. El `detail` dice qué valores se aceptan |
 | `502` | `relation` es `shared` o `all` y **Permisos no contestó**: la lista estaría incompleta y no hay forma de saber cuánto le falta |
 
 Las decisiones que no se ven en la forma:
@@ -143,7 +146,8 @@ Las decisiones que no se ven en la forma:
 - **`count` es el total que matchea el filtro**, no el tamaño de la página. Es lo que necesita el paginador de la UI para saber cuántas páginas hay.
 - **El orden desempata por `id`.** Dos snippets con el mismo nombre quedarían en el orden que Postgres quiera, y ese orden puede cambiar entre dos pedidos: el mismo snippet aparecería en dos páginas y otro en ninguna.
 - **Un `sortBy` que no existe es un 400 y no un orden por defecto.** Si la UI manda un campo mal escrito, que se note en la primera prueba y no en producción con los snippets en otro orden.
-- **`sortBy` es una lista blanca** (`name`, `language`) y no la columna que venga: con texto libre, cualquiera podría ordenar por `owner_id` y un nombre inventado reventaría con un 500.
+- **`sortBy=compliance` ordena alfabéticamente por el valor guardado**, no por el texto de la API: `compliant`, `failed`, `not-compliant`, `pending` (al revés con `desc`).
+- **`sortBy` es una lista blanca** (`name`, `language`, `compliance`) y no la columna que venga: con texto libre, cualquiera podría ordenar por `owner_id` y un nombre inventado reventaría con un 500.
 - **`relation=owned` nunca da 502**, porque no necesita preguntarle nada a Permisos. Si Permisos está caído, la UI puede seguir mostrando los propios pidiendo `relation=owned`.
 - **El dueño llega como nombre y no como `sub`.** Los nombres se piden a Auth0 de a toda la página junta y se cachean 5 minutos; si Auth0 no contesta, en `author` viaja el `sub` y el listado igual sale 200. Un listado sin nombres es peor que uno con ids, pero mucho mejor que un error.
 - **`owned` dice si el que pide es el dueño**, también en el detalle, al crear, al editar y al compartir. La UI lo usa para no ofrecer borrar, editar ni compartir un snippet que le compartieron (todos darían 404). Va calculado y no como el `sub` del dueño: `author` es un nombre para mostrar y dos usuarios pueden llamarse igual, y mandar el `sub` le pasaría a cada uno el identificador de los demás para que la UI repita una regla que ya vive acá.
@@ -155,6 +159,15 @@ GET /snippets/{id}
 ```
 
 Lo mismo que un elemento del listado **más `content`**, que solo viaja acá: en un listado de 100 snippets serían 100 pedidos al asset service.
+
+`compliance` dice si el snippet cumple las **reglas de linteo activas de su dueño**, también en un snippet que te compartieron: las reglas son las del dueño, no las de quien lo mira.
+
+| `compliance` | Qué significa |
+|---|---|
+| `compliant` | Se linteó y no tiene ninguna violación |
+| `not-compliant` | Se linteó y tiene una o más violaciones, de cualquier severidad |
+| `pending` | Todavía no se pudo lintear (el servicio del lenguaje falló o no contestó) y se va a reintentar |
+| `failed` | No se puede lintear así como está: el lenguaje lo rechazó (reglas inválidas, código que no pudo analizar). Reintentar no lo cambia |
 
 | Status | Cuándo |
 |---|---|
@@ -184,12 +197,13 @@ POST /snippets
 
 | Status | Cuerpo | Cuándo |
 |---|---|---|
-| `201` | El snippet, con `id`, `author` y `extension` | Se validó, se guardó el contenido y se registró el dueño |
+| `201` | El snippet, con `id`, `author`, `extension` y `compliance` | Se validó, se guardó el contenido y se registró el dueño |
 | `400` | `{"errors": [{"message", "line", "column"}]}` | El código no compila. `line` y `column` pueden venir en `null`: no todos los errores de PrintScript tienen posición |
 | `400` | `{"message": "..."}` | El pedido no se pudo procesar: el lenguaje no existe, la versión no existe, falta un campo, el nombre es muy largo |
 | `502` | `{"message": "..."}` | PrintScript, el asset service o Permisos no contestaron |
 
 - **`extension` no se manda, se deriva del lenguaje.** Es del catálogo, no del snippet: `printscript` → `ps`. Si viajara en el pedido, dos snippets del mismo lenguaje podrían tener extensiones distintas. Viene en la respuesta porque la UI la usa para el nombre del archivo al descargar.
+- **Se lintea al crear, después de guardar**, con las reglas de linteo activas del dueño, y la respuesta trae el estado (ver [Un snippet](#un-snippet)). Si el lenguaje falla o rechaza lintear, el pedido igual sale `201`, con el snippet en `pending` o `failed`.
 - **Un fallo a mitad de camino no deja basura.** Crear son tres pasos (validar, guardar el contenido, registrar al dueño) y el que falla deshace lo que los anteriores hicieron **solo para ese id**. Por eso un 502 tarda un poco más que un 201.
 
 ### Reemplazar, borrar y compartir
@@ -201,6 +215,8 @@ POST   /snippets/{id}/share
 ```
 
 `PUT` recibe los mismos campos que `POST` y es un **reemplazo total**: lo que no venga se pierde. Devuelve el snippet actualizado con `200`, y los mismos `400`, `404` y `502` que crear.
+
+Al reemplazarlo, el snippet pasa a `pending` y **se vuelve a lintear con el contenido nuevo**, igual que al crear: la respuesta trae el estado nuevo, y si el lenguaje falla o rechaza lintear, el pedido igual sale `200`, con el snippet en `pending` o `failed`. Nunca queda el estado del contenido anterior.
 
 `DELETE` devuelve **`204`** sin cuerpo, o `404` si no existe o no es tuyo. Borra la fila, el contenido y los accesos; si la limpieza de esos dos falla, queda en el log pero la respuesta sigue siendo `204`: para el que pidió, el snippet ya no está.
 
@@ -374,10 +390,6 @@ Los motivos de un `rejected`:
 **El cierre siempre es 1008, incluso cuando el motivo es "probá más tarde".** El código correcto para el tope de ejecuciones es 1013, pero **no sobrevive**: medido, un cierre con 1013 le llega al cliente como **1002** ("error de protocolo"), mientras 1008 y 1011 llegan tal cual. Un 1002 diría algo falso, así que la distinción viaja en el `detail`, que es lo que la UI tiene que mostrar igual.
 
 **Cerrar el browser corta la ejecución.** La conexión con PrintScript se cierra junto con la del browser, y el lugar del usuario se devuelve ahí mismo. Es lo que evita que alguien que cierra tres pestañas se quede sin poder ejecutar hasta que el servicio se reinicie.
-
-### Lo que la API todavía no devuelve
-
-El tipo `Snippet` de `printscript-ui` tiene un campo **`compliance`** (`pending`, `failed`, `not-compliant`, `compliant`) que ningún endpoint devuelve, porque todavía no existe lo que lo calcula: el linteo automático de cada snippet contra las reglas de su dueño. Mientras no esté, la UI lo trata como ausente.
 
 ## Verificar
 

@@ -2,6 +2,8 @@ package snippetsearcher.snippets.snippet
 
 import jakarta.persistence.Column
 import jakarta.persistence.Entity
+import jakarta.persistence.EnumType
+import jakarta.persistence.Enumerated
 import jakarta.persistence.Id
 import jakarta.persistence.Table
 import java.util.UUID
@@ -21,4 +23,8 @@ class Snippet(
     var language: String,
     @Column(nullable = false)
     var version: String,
-)
+) {
+    @Enumerated(EnumType.STRING)
+    @Column(name = "lint_status", nullable = false)
+    var lintStatus: LintStatus = LintStatus.PENDING
+}

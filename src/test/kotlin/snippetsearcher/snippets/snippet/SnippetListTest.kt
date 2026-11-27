@@ -225,6 +225,42 @@ class SnippetListTest(
         assertEquals("arriba", rechazado.direction)
     }
 
+    @Test
+    fun `filtra por cada estado de linteo`() {
+        val ana = dueno("compliance-filtro")
+        LintStatus.entries.forEach { guardar(ana, it.name, lintStatus = it) }
+
+        LintStatus.entries.forEach { status ->
+            val listado = listar(ana, query(compliance = status.value))
+
+            assertEquals(1, listado.total)
+            assertEquals(status, listado.snippets.single().lintStatus)
+        }
+    }
+
+    @Test
+    fun `un estado de linteo inventado se rechaza`() {
+        val result = service.list(dueno("compliance-inventado"), SnippetQuery(0, 10, compliance = "casi"))
+
+        val rechazado = assertIs<ListSnippetsResult.ComplianceNotAllowed>(result)
+        assertEquals("casi", rechazado.compliance)
+    }
+
+    // Alfabético por el valor guardado, no por el texto de la API
+    @Test
+    fun `ordena por estado de linteo en los dos sentidos`() {
+        val ana = dueno("compliance-orden")
+        listOf(LintStatus.PENDING, LintStatus.COMPLIANT, LintStatus.FAILED, LintStatus.NOT_COMPLIANT)
+            .forEach { guardar(ana, it.name, lintStatus = it) }
+        val alfabetico = listOf(LintStatus.COMPLIANT, LintStatus.FAILED, LintStatus.NOT_COMPLIANT, LintStatus.PENDING)
+
+        val asc = listar(ana, query(sortBy = "compliance", sortDirection = "asc"))
+        val desc = listar(ana, query(sortBy = "compliance", sortDirection = "desc"))
+
+        assertEquals(alfabetico, asc.snippets.map { it.lintStatus })
+        assertEquals(alfabetico.reversed(), desc.snippets.map { it.lintStatus })
+    }
+
     // El listado no muestra el contenido, asi que no tiene por que pedirlo: seria una
     // llamada al asset service por cada fila de la tabla
     @Test
@@ -243,6 +279,7 @@ class SnippetListTest(
         ownerId: String,
         name: String,
         language: String = "printscript",
+        lintStatus: LintStatus = LintStatus.PENDING,
     ) = repository.save(
         Snippet(
             id = UUID.randomUUID(),
@@ -251,7 +288,7 @@ class SnippetListTest(
             description = "una descripcion",
             language = language,
             version = "1.1",
-        ),
+        ).apply { this.lintStatus = lintStatus },
     )
 
     private fun listar(
@@ -265,5 +302,6 @@ class SnippetListTest(
         language: String? = null,
         sortBy: String? = null,
         sortDirection: String? = null,
-    ) = SnippetQuery(0, 10, name, language, sortBy, sortDirection)
+        compliance: String? = null,
+    ) = SnippetQuery(0, 10, name, language, sortBy, sortDirection, compliance = compliance)
 }

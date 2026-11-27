@@ -2,6 +2,9 @@ package snippetsearcher.snippets.snippet
 
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor
+import org.springframework.data.jpa.repository.Modifying
+import org.springframework.data.jpa.repository.Query
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 // JpaSpecificationExecutor es lo que permite armar la consulta del listado con los filtros
@@ -15,4 +18,13 @@ interface SnippetRepository :
         id: UUID,
         ownerId: String,
     ): Snippet?
+
+    // Solo esa columna: guardar la entidad entera pisaría lo que otro pedido le cambió mientras se linteaba
+    @Modifying
+    @Transactional
+    @Query("UPDATE Snippet s SET s.lintStatus = :status WHERE s.id = :id")
+    fun updateLintStatus(
+        id: UUID,
+        status: LintStatus,
+    )
 }
