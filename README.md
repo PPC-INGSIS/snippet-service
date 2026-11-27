@@ -264,6 +264,27 @@ GET /languages
 
 Las versiones las sabe PrintScript, así que es el único de los dos que puede dar **`502`**.
 
+### Reglas de formateo y linteo
+
+```
+GET /rules/format
+GET /rules/lint
+```
+
+Devuelven las reglas de formateo o de linteo del usuario, en el orden en que las da PrintScript:
+
+```json
+[
+  { "id": "if-indent", "name": "Espacios de indentación dentro de un if", "since": "1.1", "isActive": false, "value": 4 },
+  { "id": "line-break-after-statement", "name": "Salto de línea después de cada sentencia", "since": "1.0", "isActive": false, "value": null }
+]
+```
+
+- **Las reglas las sabe PrintScript, no Snippets.** Se piden a su `GET /rules/{kind}` sin versión, así que vienen las de la última: las reglas son del usuario, no de un snippet. `name` es la descripción que da PrintScript.
+- **Por ahora salen todas deshabilitadas**, con el default de PrintScript como `value`. Todavía no se pueden guardar por usuario. Las reglas de tipo flag no tienen default, así que su `value` es `null`.
+- **`since` dice desde qué versión de PrintScript corre la regla.** Un usuario puede activar una regla de 1.1 aunque tenga snippets 1.0: PrintScript no la aplica en esos snippets y la informa como ignorada. Con `since` la UI puede avisarlo.
+- Status: `200`, o `502` si PrintScript no contestó.
+
 ### La ejecución interactiva (WebSocket)
 
 ```
