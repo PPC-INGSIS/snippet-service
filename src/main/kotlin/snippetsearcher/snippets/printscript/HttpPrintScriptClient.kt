@@ -3,15 +3,12 @@ package snippetsearcher.snippets.printscript
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.MediaType
-import org.springframework.http.client.JdkClientHttpRequestFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.client.HttpClientErrorException
-import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientException
 import org.springframework.web.client.body
+import snippetsearcher.snippets.http.timedRestClient
 import snippetsearcher.snippets.security.AccessToken
-import snippetsearcher.snippets.security.BearerTokenInterceptor
-import java.net.http.HttpClient
 import java.nio.charset.StandardCharsets
 import java.time.Duration
 
@@ -24,17 +21,8 @@ class HttpPrintScriptClient(
 ) : PrintScriptClient {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    // Con timeouts: sin eso, un PrintScript colgado cuelga al thread que llama
-    private val restClient =
-        RestClient
-            .builder()
-            .baseUrl(baseUrl)
-            .requestInterceptor(BearerTokenInterceptor(accessToken))
-            .requestFactory(
-                JdkClientHttpRequestFactory(
-                    HttpClient.newBuilder().connectTimeout(connectTimeout).build(),
-                ).apply { setReadTimeout(readTimeout) },
-            ).build()
+    // PrintScript valida el token igual que nosotros, así que hay que reenviar el del usuario
+    private val restClient = timedRestClient(baseUrl, connectTimeout, readTimeout, accessToken)
 
     override fun validate(
         version: String,
