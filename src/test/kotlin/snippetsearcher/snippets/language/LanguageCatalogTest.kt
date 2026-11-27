@@ -22,6 +22,11 @@ class LanguageCatalogTest {
         ) = ValidationResult.Checked(emptyList())
 
         override fun rules(kind: RuleKind) = RulesResult.Found(emptyList())
+
+        override fun validateRules(
+            kind: RuleKind,
+            rules: Map<String, Any?>,
+        ) = RulesValidationResult.Valid
     }
 
     @Test

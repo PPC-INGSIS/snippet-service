@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
 import snippetsearcher.snippets.language.RuleKind
 import snippetsearcher.snippets.language.RulesResult
+import snippetsearcher.snippets.language.RulesValidationResult
 import snippetsearcher.snippets.language.ValidationResult
 import snippetsearcher.snippets.language.VersionsResult
 
@@ -14,9 +15,13 @@ class FakePrintScriptClient : PrintScriptClient {
     var versionsResult: VersionsResult = VersionsResult.Found(emptyList())
     var executionResult: ExecutionResult = ExecutionResult.Ran(emptyList(), null)
     var rulesResult: RulesResult = RulesResult.Found(emptyList())
+    var rulesValidationResult: RulesValidationResult = RulesValidationResult.Valid
 
     // El último tipo de reglas pedido: para probar que cada ruta pide el suyo
     var lastRuleKind: RuleKind? = null
+
+    // Las últimas reglas que se mandaron a validar: para probar qué valor se manda de cada una
+    var lastValidatedRules: Map<String, Any?>? = null
 
     // Con qué se pidió correr, para probar que se manda el contenido del snippet y los inputs del test
     var lastInputs: List<String>? = null
@@ -51,13 +56,23 @@ class FakePrintScriptClient : PrintScriptClient {
         return rulesResult
     }
 
+    override fun validateRules(
+        kind: RuleKind,
+        rules: Map<String, Any?>,
+    ): RulesValidationResult {
+        lastValidatedRules = rules
+        return rulesValidationResult
+    }
+
     // Deja el fake como recién creado, para que ningún test dependa de lo que dejó el anterior
     fun clear() {
         result = ValidationResult.Checked(emptyList())
         versionsResult = VersionsResult.Found(emptyList())
         executionResult = ExecutionResult.Ran(emptyList(), null)
         rulesResult = RulesResult.Found(emptyList())
+        rulesValidationResult = RulesValidationResult.Valid
         lastRuleKind = null
+        lastValidatedRules = null
         lastVersion = null
         lastContent = null
         lastInputs = null

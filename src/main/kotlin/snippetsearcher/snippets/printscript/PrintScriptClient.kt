@@ -2,6 +2,7 @@ package snippetsearcher.snippets.printscript
 
 import snippetsearcher.snippets.language.RuleKind
 import snippetsearcher.snippets.language.RulesResult
+import snippetsearcher.snippets.language.RulesValidationResult
 import snippetsearcher.snippets.language.ValidationResult
 import snippetsearcher.snippets.language.VersionsResult
 
@@ -27,6 +28,11 @@ interface PrintScriptClient {
     fun versions(): VersionsResult
 
     fun rules(kind: RuleKind): RulesResult
+
+    fun validateRules(
+        kind: RuleKind,
+        rules: Map<String, Any?>,
+    ): RulesValidationResult
 }
 
 sealed interface ExecutionResult {
