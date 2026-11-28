@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.test.web.server.LocalServerPort
 import org.springframework.context.annotation.Import
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.test.context.TestPropertySource
 import org.springframework.web.socket.CloseStatus
 import org.springframework.web.socket.TextMessage
@@ -28,7 +29,9 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -72,6 +75,11 @@ class ExecutionRelayTest(
     @LocalServerPort private val port: Int,
 ) {
     private val abiertos = CopyOnWriteArrayList<Browser>()
+
+    // Como campo y no en el constructor: es un solo test el que lo usa, y el constructor ya está en el
+    // límite de parámetros de detekt
+    @Autowired
+    private lateinit var starter: ExecutionStarter
 
     @BeforeEach
     fun limpiarLosFakes() {
@@ -191,6 +199,20 @@ class ExecutionRelayTest(
         conectar(id).manda("""{"type":"auth","token":"$TOKEN_DE_BETO"}""")
 
         esperarQueArranque()
+        // No es el dueño, así que se le preguntó a Permisos, y con su token: sin él, Permisos lo rechaza (#98)
+        assertEquals(TOKEN_DE_BETO, permissions.lastRoleToken)
+    }
+
+    // Los hilos del WebSocket se reusan: si el usuario quedara en el contexto, la próxima conexión lo heredaría
+    @Test
+    fun `al arrancar no queda el usuario en el contexto del hilo`() {
+        val id = guardar(ana)
+        permissions.registerReader(id, "auth0|beto")
+
+        val result = starter.start(TOKEN_DE_BETO, id, {}, {})
+
+        assertIs<StartResult.Started>(result).execution.close()
+        assertNull(SecurityContextHolder.getContext().authentication)
     }
 
     @Test
