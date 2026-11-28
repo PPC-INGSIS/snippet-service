@@ -43,7 +43,11 @@ import kotlin.test.assertTrue
 @TestPropertySource(
     // Stream y grupo propios: este contexto trae su propio PingConsumer y en un grupo de Redis
     // cada mensaje le llega a uno solo, así que con el grupo compartido le robaría el ping a PingRoundTripTest
-    properties = ["spike.ping.stream=spike.ping.cliente", "spike.ping.group=snippets-cliente"],
+    properties = [
+        // Stream y grupo propios: ver el comentario de ExecutionRelayTest
+        "snippets.test-runs.stream=snippets.test-runs.cliente",
+        "snippets.test-runs.group=snippets-cliente",
+    ],
 )
 class WebSocketInteractiveExecutionClientTest(
     @Autowired private val json: ObjectMapper,

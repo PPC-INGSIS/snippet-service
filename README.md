@@ -214,7 +214,7 @@ DELETE /snippets/{id}
 POST   /snippets/{id}/share
 ```
 
-`PUT` recibe los mismos campos que `POST` y es un **reemplazo total**: lo que no venga se pierde. Devuelve el snippet actualizado con `200`, y los mismos `400`, `404` y `502` que crear.
+`PUT` recibe los mismos campos que `POST` y es un **reemplazo total**: lo que no venga se pierde. Devuelve el snippet actualizado con `200`, y los mismos `400`, `404` y `502` que crear. Además **deja los tests del snippet corriendo en segundo plano** y contesta sin esperarlos (ver [Los tests de un snippet](#los-tests-de-un-snippet)).
 
 Al reemplazarlo, el snippet pasa a `pending` y **se vuelve a lintear con el contenido nuevo**, igual que al crear: la respuesta trae el estado nuevo, y si el lenguaje falla o rechaza lintear, el pedido igual sale `200`, con el snippet en `pending` o `failed`. Nunca queda el estado del contenido anterior.
 
@@ -238,10 +238,27 @@ POST   /snippets/{snippetId}/tests/run
 Un test case es un nombre, las entradas que se le van a dar y las salidas que se esperan:
 
 ```json
-{ "id": "3c1e...", "name": "sin entrada", "input": [], "output": ["1", "1", "2"] }
+{
+  "id": "3c1e...",
+  "name": "sin entrada",
+  "input": [],
+  "output": ["1", "1", "2"],
+  "result": { "passed": false, "outputs": ["1", "1", "3"], "error": null, "ranAt": "2026-11-27T23:10:04Z" },
+  "pending": false
+}
 ```
 
 `input` y `output` están **en singular aunque sean listas** porque así los nombra la UI (`TestCase` en `printscript-ui`). Las dos son opcionales al crear: sin ellas, el test no pide entradas o no espera salidas.
+
+**Al actualizar un snippet, sus tests corren solos** (US 16). El `PUT` contesta sin esperarlos: deja el trabajo encolado y lo toma un consumidor. Las reglas son estas, y valen también para el linteo y el formateo automáticos cuando se hagan:
+
+- **Un test que falla no es un trabajo que falla.** Si el snippet imprimió otra cosa, eso es un resultado: se guarda y no se reintenta. Si lo que falla es PrintScript, no hay resultado y el trabajo queda para reintentar. Sin esa distinción, un test que legítimamente falla se reintentaría para siempre.
+- **Cada test se guarda al terminar**, no todos juntos al final: si el trabajo se corta por la mitad, lo que ya corrió se ve.
+- **Después de 3 intentos** (`SNIPPETS_TEST_RUNS_MAX_ATTEMPTS`) el trabajo se da por perdido y no se reintenta más: un snippet que falla siempre no puede tapar a los demás.
+- **Lo que falta por hacer se sabe de la base, no de Redis.** La librería de la cátedra confirma cada mensaje al entregarlo (`receiveAutoAck`), así que un consumidor que se cae no lo recupera: el estado del trabajo vive en la tabla `snippet_test_run`.
+- **Editar un test borra su resultado**: el guardado era de un test que esperaba otra cosa.
+
+`result` es **cómo salió la última corrida en segundo plano**, o `null` si nunca corrió. No lo escribe `/tests/run`: ese endpoint corre lo que le mandan, que puede ser un test que ni está guardado. `pending` es del snippet y no del test, porque el trabajo es por snippet: mientras esté en `true`, lo que diga `result` puede quedar viejo en cualquier momento.
 
 | Endpoint | Status |
 |---|---|

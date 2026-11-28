@@ -12,6 +12,7 @@ import snippetsearcher.snippets.permissions.DeleteAccessesResult
 import snippetsearcher.snippets.permissions.PermissionsClient
 import snippetsearcher.snippets.permissions.RegisterAccessResult
 import snippetsearcher.snippets.permissions.SharedSnippetsResult
+import snippetsearcher.snippets.testcase.TestRunQueue
 import java.util.UUID
 
 @Service
@@ -21,6 +22,7 @@ class SnippetService(
     private val permissionsClient: PermissionsClient,
     private val access: SnippetAccess,
     private val writer: SnippetWriter,
+    private val testRuns: TestRunQueue,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -209,11 +211,25 @@ class SnippetService(
         }
     }
 
+    /**
+     * Actualiza el snippet y deja sus tests corriendo en segundo plano (US 16).
+     *
+     * El trabajo se encola **después** de que el writer commiteó, nunca adentro de su transacción: si
+     * el mensaje saliera antes y hubiera rollback, el consumidor trabajaría sobre un cambio que no
+     * quedó guardado. Y solo si el update salió bien: un pedido rechazado no cambió nada, así que no
+     * hay nada que volver a correr.
+     *
+     * El resultado de los tests no cambia esta respuesta: el usuario no espera a que corran.
+     */
     fun update(
         ownerId: String,
         id: UUID,
         changes: NewSnippet,
-    ): UpdateSnippetResult = writer.update(ownerId, id, changes)
+    ): UpdateSnippetResult {
+        val resultado = writer.update(ownerId, id, changes)
+        if (resultado is UpdateSnippetResult.Updated) testRuns.enqueue(id)
+        return resultado
+    }
 
     /**
      * Borra el snippet del dueño: la fila, el contenido y los accesos.

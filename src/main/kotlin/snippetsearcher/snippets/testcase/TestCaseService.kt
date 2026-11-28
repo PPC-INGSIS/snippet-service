@@ -22,6 +22,7 @@ class TestCaseService(
     private val snippets: SnippetRepository,
     private val access: SnippetAccess,
     private val testCases: TestCaseRepository,
+    private val ledger: TestRunLedger,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -65,7 +66,10 @@ class TestCaseService(
         testCase.name = data.name.trim()
         testCase.inputs = data.inputs
         testCase.outputs = data.outputs
-        return SaveTestCaseResult.Saved(testCases.save(testCase))
+        val guardado = testCases.save(testCase)
+        // El resultado guardado era de otro test: cambio lo que recibe o lo que espera
+        ledger.forget(testCaseId)
+        return SaveTestCaseResult.Saved(guardado)
     }
 
     fun delete(
