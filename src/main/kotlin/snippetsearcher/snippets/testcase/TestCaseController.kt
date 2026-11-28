@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.PutMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import java.time.Instant
 import java.util.UUID
 
 @RestController
@@ -20,6 +21,7 @@ import java.util.UUID
 class TestCaseController(
     private val service: TestCaseService,
     private val runner: TestRunService,
+    private val ledger: TestRunLedger,
 ) {
     @GetMapping
     fun list(
@@ -29,7 +31,7 @@ class TestCaseController(
         val ownerId = jwt.subject ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
         return when (val result = service.list(ownerId, snippetId)) {
-            is ListTestCasesResult.Listed -> ResponseEntity.ok(result.testCases.map { it.toResponse() })
+            is ListTestCasesResult.Listed -> ResponseEntity.ok(conResultados(snippetId, result.testCases))
             ListTestCasesResult.SnippetNotFound -> ResponseEntity.notFound().build()
             // 502: el pedido estaba bien, falló Permisos
             is ListTestCasesResult.AccessUnknown ->
@@ -105,6 +107,22 @@ class TestCaseController(
         return service.update(ownerId, snippetId, testCaseId, request.toData()).toResponse(HttpStatus.OK)
     }
 
+    /**
+     * Los tests con el resultado de la última corrida.
+     *
+     * Una consulta para toda la lista y no una por test. `pending` es del snippet y no del test: el
+     * trabajo en segundo plano es por snippet, así que mientras está encolado o corriendo, **todos**
+     * sus resultados pueden quedar viejos de un momento a otro.
+     */
+    private fun conResultados(
+        snippetId: UUID,
+        tests: List<TestCase>,
+    ): List<TestCaseResponse> {
+        val resultados = ledger.resultsOf(tests.map { it.id })
+        val pendiente = ledger.pending(snippetId)
+        return tests.map { it.toResponse(resultados[it.id], pendiente) }
+    }
+
     @DeleteMapping("/{testCaseId}")
     fun delete(
         @AuthenticationPrincipal jwt: Jwt,
@@ -160,6 +178,20 @@ data class TestCaseResponse(
     val name: String,
     val input: List<String>,
     val output: List<String>,
+    // null si nunca corrió en segundo plano. Correrlo a mano con /tests/run no guarda nada: ese
+    // resultado es de un test que puede ni estar guardado
+    val result: TestResultResponse?,
+    // true mientras los tests de este snippet están encolados o corriendo: lo que dice `result`
+    // puede quedar viejo en cualquier momento. Es el "still pending" de la US
+    val pending: Boolean,
+)
+
+// La última corrida de un test. `expected` no viaja: es el `output` del test, que ya está al lado
+data class TestResultResponse(
+    val passed: Boolean,
+    val outputs: List<String>,
+    val error: String?,
+    val ranAt: Instant,
 )
 
 private fun TestCaseRequest.toData() = TestCaseData(name, input, output)
@@ -168,4 +200,14 @@ private fun RunTestRequest.toRun() = TestRun(input, output)
 
 private fun RunTestResult.Ran.toResponse() = RunTestResponse(passed, outputs, expected, error)
 
-private fun TestCase.toResponse() = TestCaseResponse(id, name, inputs, outputs)
+private fun TestCase.toResponse(
+    result: TestCaseResult? = null,
+    pending: Boolean = false,
+) = TestCaseResponse(
+    id,
+    name,
+    inputs,
+    outputs,
+    result?.let { TestResultResponse(it.passed, it.outputs, it.error, it.ranAt) },
+    pending,
+)
