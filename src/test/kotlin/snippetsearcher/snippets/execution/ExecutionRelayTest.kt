@@ -56,11 +56,11 @@ import kotlin.test.assertTrue
         // usuario ocupado para el test que viene
         "snippets.execution.max-per-user=2",
         // Stream y grupo propios. Esta clase levanta otro contexto de Spring —con servidor real— y
-        // por lo tanto otro PingConsumer. En un grupo de consumidores de Redis cada mensaje le llega
-        // a uno solo, así que con el grupo compartido este consumidor le robaba el ping a
-        // PingRoundTripTest y ese test fallaba sin que nadie tocara Redis.
-        "spike.ping.stream=spike.ping.relay",
-        "spike.ping.group=snippets-relay",
+        // por lo tanto otro TestRunConsumer. En un grupo de consumidores de Redis cada mensaje le
+        // llega a uno solo, así que con el grupo compartido este consumidor le roba los trabajos al
+        // test que los está esperando, y ese test falla sin que nadie toque Redis.
+        "snippets.test-runs.stream=snippets.test-runs.relay",
+        "snippets.test-runs.group=snippets-relay",
     ],
 )
 class ExecutionRelayTest(
