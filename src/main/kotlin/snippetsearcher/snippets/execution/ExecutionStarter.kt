@@ -1,6 +1,9 @@
 package snippetsearcher.snippets.execution
 
 import org.slf4j.LoggerFactory
+import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.security.oauth2.jwt.Jwt
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken
 import org.springframework.stereotype.Service
 import snippetsearcher.snippets.snippet.FindSnippetResult
 import snippetsearcher.snippets.snippet.SnippetService
@@ -34,9 +37,10 @@ class ExecutionStarter(
         onMessage: (String) -> Unit,
         onClose: () -> Unit,
     ): StartResult {
-        val userId = tokens.userOf(token) ?: return StartResult.Rejected("El token no es válido o no tiene el scope")
+        val verified = tokens.verify(token) ?: return StartResult.Rejected("El token no es válido o no tiene el scope")
+        val userId = verified.userId
 
-        val found = snippets.find(userId, snippetId)
+        val found = asUser(verified.jwt) { snippets.find(userId, snippetId) }
         if (found !is FindSnippetResult.Found) return StartResult.Rejected(motivoDe(found))
 
         // El lugar se toma acá, después de chequear el acceso y antes de abrir nada contra PrintScript:
@@ -80,6 +84,28 @@ class ExecutionStarter(
         override fun close() {
             execution.close()
             if (released.compareAndSet(false, true)) slots.release(userId)
+        }
+    }
+
+    /**
+     * Corre [block] con el usuario en el SecurityContext del hilo, como si fuera un pedido HTTP.
+     *
+     * Los mensajes del WebSocket llegan fuera del filtro de Spring Security, así que nadie llenó el
+     * contexto. Sin esto, si el snippet no es suyo, la consulta a Permisos sale sin el token del usuario
+     * y falla (#98). Es lo que el filtro hace en cada pedido HTTP, hecho a mano donde no llega.
+     *
+     * El `finally` es obligatorio: los hilos del WebSocket se reusan, y sin limpiar, la próxima conexión
+     * que caiga en este hilo arrancaría con la identidad de este usuario.
+     */
+    private fun <T> asUser(
+        jwt: Jwt,
+        block: () -> T,
+    ): T {
+        SecurityContextHolder.getContext().authentication = JwtAuthenticationToken(jwt)
+        try {
+            return block()
+        } finally {
+            SecurityContextHolder.clearContext()
         }
     }
 

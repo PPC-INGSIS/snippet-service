@@ -1,6 +1,7 @@
 package snippetsearcher.snippets.execution
 
 import org.slf4j.LoggerFactory
+import org.springframework.security.oauth2.jwt.Jwt
 import org.springframework.security.oauth2.jwt.JwtDecoder
 import org.springframework.security.oauth2.jwt.JwtDecoderInitializationException
 import org.springframework.security.oauth2.jwt.JwtException
@@ -19,8 +20,8 @@ class ExecutionToken(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    /** El `sub` del usuario si el token sirve, o null si no: para el browser los dos casos son el mismo. */
-    fun userOf(token: String): String? {
+    /** El usuario del token si sirve, o null si no: para el browser los dos casos son el mismo. */
+    fun verify(token: String): VerifiedToken? {
         val jwt =
             try {
                 decoder.decode(token)
@@ -41,10 +42,19 @@ class ExecutionToken(
             return null
         }
 
-        return jwt.subject?.takeUnless { it.isBlank() }
+        return jwt.subject?.takeUnless { it.isBlank() }?.let { VerifiedToken(it, jwt) }
     }
 
     private companion object {
         const val READ_SCOPE = "read:snippets"
     }
 }
+
+/**
+ * Un token que pasó la validación: el `sub` ya chequeado (no nulo ni en blanco) para decidir accesos,
+ * y el `Jwt` para armar la autenticación del usuario durante el arranque (ver ExecutionStarter).
+ */
+class VerifiedToken(
+    val userId: String,
+    val jwt: Jwt,
+)

@@ -28,21 +28,23 @@ class FakeJwtConfiguration {
     fun fakeJwtDecoder(): JwtDecoder =
         JwtDecoder { token ->
             when (token) {
-                TOKEN_DE_ANA -> jwt("auth0|ana", "read:snippets write:snippets")
-                TOKEN_DE_BETO -> jwt("auth0|beto", "read:snippets write:snippets")
-                TOKEN_SIN_SCOPE -> jwt("auth0|ana", "write:snippets")
-                TOKEN_SIN_SUB -> jwt(null, "read:snippets")
+                TOKEN_DE_ANA -> jwt(token, "auth0|ana", "read:snippets write:snippets")
+                TOKEN_DE_BETO -> jwt(token, "auth0|beto", "read:snippets write:snippets")
+                TOKEN_SIN_SCOPE -> jwt(token, "auth0|ana", "write:snippets")
+                TOKEN_SIN_SUB -> jwt(token, null, "read:snippets")
                 // Cualquier otro es un token que no valida, igual que uno vencido o falsificado
                 else -> throw JwtException("El token no es válido")
             }
         }
 
+    // El valor es el token que llegó, como en el decoder de verdad: es lo que se reenvía a los otros servicios
     private fun jwt(
+        token: String,
         subject: String?,
         scope: String,
     ): Jwt =
         Jwt
-            .withTokenValue("fake")
+            .withTokenValue(token)
             .header("alg", "none")
             .claim("scope", scope)
             .also { builder -> subject?.let { builder.subject(it) } }

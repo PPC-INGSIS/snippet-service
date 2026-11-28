@@ -3,6 +3,7 @@ package snippetsearcher.snippets.permissions
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Primary
+import snippetsearcher.snippets.security.UserAccessToken
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
@@ -48,10 +49,15 @@ class FakePermissionsClient : PermissionsClient {
         return DeleteAccessesResult.Deleted
     }
 
+    // El token que tendría que viajar a Permisos en la última consulta de rol: el del usuario del hilo
+    var lastRoleToken: String? = null
+
     override fun roleOf(
         snippetId: UUID,
         userId: String,
     ): RoleResult {
+        // Lo mismo que leería HttpPermissionsClient: sin usuario en el hilo, el de verdad no tiene qué mandar
+        lastRoleToken = UserAccessToken().currentOrNull()
         failWith?.let { return RoleResult.Failed(it) }
 
         return accesos[snippetId]?.get(userId)?.let { RoleResult.Found(it) } ?: RoleResult.None
@@ -77,6 +83,7 @@ class FakePermissionsClient : PermissionsClient {
     fun clear() {
         accesos.clear()
         failWith = null
+        lastRoleToken = null
     }
 }
 
